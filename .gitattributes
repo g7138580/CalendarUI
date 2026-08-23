@@ -1,0 +1,8 @@
+* text=auto
+
+# Skyrim requires UTF-16 LE. Never touch line endings or try to diff these.
+*.txt text eol=crlf
+dist/CalendarUI/Interface/Translations/*.txt binary
+
+# Built and binary assets
+*.swf binary
