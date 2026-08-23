@@ -1,0 +1,21 @@
+# Build output
+build/
+out/
+pdb-archive/
+
+# vcpkg
+vcpkg_installed/
+
+# The built movie. Produced by flash/build-swf.ps1 from base-messagebox.swf.
+dist/CalendarUI/Interface/CalendarUI.swf
+flash/CalendarUI.swf
+
+# Game assets. Not redistributable; copy messagebox.swf from your own
+# install and rename it. See flash/README.md.
+flash/base-messagebox.swf
+flash/decompiled/
+
+# Editor
+.vs/
+.vscode/
+*.user

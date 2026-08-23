@@ -1,0 +1,7 @@
+{
+	"skseName":"CalendarUI",
+	"menuName":"CALENDAR",
+	"icon":"scroll",
+	"priority": 70,
+	"category": "bottom"
+}
