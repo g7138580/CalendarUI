@@ -1,7 +1,8 @@
 # CalendarUI
 
-A Tamriel calendar as a real Skyrim menu, opened with **L** or from the Tween
-Menu wheel. It shows the month as a grid of day squares, marks holidays and
+A Tamriel calendar as a real Skyrim menu, opened with **L** or from the tween
+wheel (Tween Menu Overhaul or Extended Tween Menu, both supported without a
+patch). It shows the month as a grid of day squares, marks holidays and
 moon phases, and opens a panel with a day's events -- where the player can also
 write notes of their own.
 
@@ -536,9 +537,14 @@ result into `dist/CalendarUI/Interface/`; without it the build stops at
 The menu is registered as **`CalendarUI`** -- the same string as the movie, so
 there is only one name to know. That is what anything else uses to open it.
 
-[Tween Menu Overhaul](https://www.nexusmods.com/skyrimspecialedition/mods/64409)
-is supported out of the box; `Interface/tweenoptions/calendarui.json` ships with
-the mod:
+Both [Tween Menu
+Overhaul](https://www.nexusmods.com/skyrimspecialedition/mods/64409) and
+[Extended Tween
+Menu](https://www.nexusmods.com/skyrimspecialedition/mods/96028) are supported
+out of the box, and neither needs a patch: they read the same
+`Interface/tweenoptions/` folder and take the same option format, so the one
+file works for either. `Interface/tweenoptions/calendarui.json` ships with the
+mod:
 
 ```json
 {
@@ -573,7 +579,7 @@ one that also sets `kTopmostRenderedMenu`. Cursor handling is left entirely to
 the menu system, as it is for every vanilla menu.
 
 `category` is one of `top` / `left` / `right` / `bottom`, mapped to a label by
-that mod's own `categories/categories.json`, and `priority` orders entries
+the wheel mod's own `categories/categories.json`, and `priority` orders entries
 within a category.
 
 ## Where things live
