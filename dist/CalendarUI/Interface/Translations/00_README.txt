@@ -113,6 +113,15 @@ The keys
   $CalendarUI_SeasonSummer
   $CalendarUI_SeasonAutumn
 
+  $CalendarUI_MoonNew        The eight moon phases. Shown beside the date when
+  $CalendarUI_MoonWaxingCrescent  you select a day the moon changes phase on --
+  $CalendarUI_MoonFirstQuarter    the small disc drawn in the day's top-right
+  $CalendarUI_MoonWaxingGibbous   corner is the shorthand for this.
+  $CalendarUI_MoonFull
+  $CalendarUI_MoonWaningGibbous   All eight are shown, so all eight are worth
+  $CalendarUI_MoonThirdQuarter    translating.
+  $CalendarUI_MoonWaningCrescent
+
 Optional, not in the shipped file -- add them only if you need them:
 
   $CalendarUI_DayAbbrev0     Grid column headings, Sundas..Loredas in order.

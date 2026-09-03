@@ -17,14 +17,18 @@ $ErrorActionPreference = 'Continue'
 
 # --- Environment -------------------------------------------------------------
 
-# Set these in your environment, or edit the defaults here.
-if (-not $env:VCPKG_ROOT) { $env:VCPKG_ROOT = 'C:\vcpkg' }
+$env:VCPKG_ROOT = 'C:\vcpkg'
 
 # Where the built plugin is deployed. CMakeLists reads this and appends
-# /CalendarUI/SKSE/Plugins. Point it at your MO2 mods folder.
-if (-not $env:SKYRIM_MODS_FOLDER) {
-    Write-Warning 'SKYRIM_MODS_FOLDER is not set; the build will not deploy.'
-}
+# /CalendarUI/SKSE/Plugins.
+$env:SKYRIM_MODS_FOLDER = 'e:\Skyrim Modlists\Winds of the North\mods'
+
+# The mod's folder name, which is NOT always "CalendarUI" -- Winds of the North
+# installs it as "[NoDelete] CalendarUI" (the Wabbajack prefix for a folder the
+# installer must not remove). CMakeLists appends "/CalendarUI/SKSE/Plugins" to
+# the mods folder, so without this the build would deploy into a folder MO2 has
+# never heard of and the game would keep loading the previous .dll.
+$env:CALENDARUI_MOD_FOLDER = '[NoDelete] CalendarUI'
 
 Set-Location $PSScriptRoot
 
@@ -71,8 +75,13 @@ Write-Host 'Building...' -ForegroundColor Cyan
 cmake --build build/release --config Release
 if ($LASTEXITCODE -ne 0) { throw 'Build failed.' }
 
-$dll = Join-Path $env:SKYRIM_MODS_FOLDER 'CalendarUI\SKSE\Plugins\CalendarUI.dll'
-if (Test-Path $dll) {
+$dll = Join-Path $env:SKYRIM_MODS_FOLDER (Join-Path $env:CALENDARUI_MOD_FOLDER 'SKSE\Plugins\CalendarUI.dll')
+# -LiteralPath, not the bare form: the Wabbajack folder name
+# "[NoDelete] CalendarUI" contains square brackets, which Test-Path treats
+# as a wildcard character class. Without -LiteralPath the check returns
+# false for a file that is really there, and a good build reports a
+# spurious "not at the expected path" warning.
+if (Test-Path -LiteralPath $dll) {
     Write-Host "Deployed: $dll" -ForegroundColor Green
 } else {
     Write-Warning "Build succeeded but the .dll is not at the expected path: $dll"

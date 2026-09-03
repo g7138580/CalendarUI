@@ -78,6 +78,52 @@ class MessageBox extends MovieClip
    var Cells;            // the 42 day buttons
    var CellContainer;
    var HeaderContainer;
+   var FrameContainer;
+
+   // The note editor. Editing is the flag handleInput checks FIRST -- while it
+   // is true the keyboard belongs to Flash, not to the game or this menu.
+   var Editing;
+   var EditLayer;
+   var EditName;
+   var EditDesc;
+   var EditNameLabel;
+   var EditDescLabel;
+   var EditField;        // 0 = name, 1 = description
+   var EditDay;
+
+   // What held focus before the editor opened, restored on close.
+   var PreviousFocus;
+
+   // The note editor's keys, as DX scan codes from the INI. Defaults match
+   // Settings.h so the editor still works if setNoteKeys never arrives.
+   var NoteKeyScan = 49;        // N
+   var NoteSaveScan = 28;       // Enter
+   var NoteCancelScan = 1;      // Escape
+   var NoteSwitchScan = 15;     // Tab
+   var NoteDeleteScan = 62;     // F4
+   var NoteDeleteCtrl = false;
+
+   // The delete confirmation. Confirming gates handleInput the way Editing
+   // does, so the question is genuinely modal.
+   var Confirming;
+   var ConfirmLayer;
+   var ConfirmPromptBar;
+   var ConfirmPrompts;
+
+   // The editor's own prompt bar.
+   var EditPromptBar;
+   var EditPrompts;
+
+   // The day popup's own one-prompt bar ("Add note" / "Edit note").
+   var PopupPromptBar;
+   var PopupPrompts;
+
+   // The icons drawn beside No and Yes, as ButtonArt frame numbers. Escape and
+   // Enter on a keyboard; SetKeys swaps in the gamepad pair when one is in use,
+   // exactly as the prompt bar does.
+
+   // The day the popup is showing, so the note key knows what it is editing.
+   var PopupDay;
 
    var Data;             // the month object from C++
    var SelectedIndex;
@@ -91,8 +137,117 @@ class MessageBox extends MovieClip
    static var COLS = 7;
    static var ROWS = 6;
    static var CELL_W = 100;
-   static var CELL_H = 55;
-   static var CELL_GAP = 4;
+   static var CELL_GAP = 6;
+
+   // --- vertical fit -----------------------------------------------------
+   //
+   // The stage is 1280x720 and MessageMenu is placed at its centre, so the
+   // whole panel has 720 units of height to live in NO MATTER the player's
+   // resolution -- Skyrim scales the movie to the screen, it does not give
+   // the movie more room on a bigger monitor. A panel taller than this is
+   // clipped equally top and bottom.
+   //
+   // CELL_H is therefore NOT a constant. It is the preferred height, clamped
+   // at runtime by FitCellHeight() to whatever actually fits once the header,
+   // footer and margins have taken their share. Hardcoding it is what put the
+   // menu off-screen: 6 rows at 80 plus the fixed furniture came to 812.
+   static var STAGE_H = 720;
+   static var STAGE_W = 1280;
+
+   // Kept off the very edge of the screen, and away from Skyrim's own
+   // letterboxing on unusual aspect ratios.
+   static var SCREEN_PAD = 20;
+
+   static var CELL_H_PREFERRED = 80;
+   static var CELL_H_MIN = 44;
+
+   // Set by FitCellHeight before any layout runs. Every consumer reads this,
+   // never CELL_H_PREFERRED.
+   static var CELL_H = 80;
+
+   // --- cell frames ------------------------------------------------------
+   //
+   // The vanilla MessageBoxButton is a wide, borderless plate: seven of them
+   // in a row read as a row of buttons, not a calendar. So each cell gets a
+   // drawn box BEHIND the button -- border plus fill -- while the button
+   // itself stays for focus, selection and gamepad navigation.
+   //
+   // Drawn rather than art from the base SWF because messagebox.swf has no
+   // square frame symbol to attach, and drawing needs no new tag in the SWF.
+   static var FRAME_LINE = 1;
+   static var FRAME_LINE_COLOR = 0x9A8B6A;   // the UI's muted gold
+   static var FRAME_LINE_ALPHA = 55;
+   static var FRAME_FILL_COLOR = 0x000000;
+   static var FRAME_FILL_ALPHA = 35;
+
+   // Today's cell is called out by its frame instead of only by bold text.
+   static var FRAME_TODAY_COLOR = 0xE8D9A0;
+   static var FRAME_TODAY_ALPHA = 100;
+
+   // The vanilla selection indicator is not used at all.
+   //
+   // It is drawn for a wide message-box button and swamps a calendar cell;
+   // scaling it down to fit made it vanish instead. Since the cells already
+   // have a drawn frame, selection is shown by lighting THAT up -- the same
+   // treatment today's cell gets, one visual language for both.
+   //
+   // The vanilla art is hidden rather than left at natural size, because it
+   // would otherwise sit inside the frame competing with it.
+   static var SELECTION_COLOR = 0xFFFFFF;
+   static var SELECTION_ALPHA = 100;
+   static var SELECTION_LINE = 2;
+
+   // Today, when it is also the selected cell. Selection wins on colour --
+   // it is the thing the player is moving -- so today keeps its identity
+   // through the thicker border alone.
+   static var TODAY_LINE = 2;
+
+   // --- Moon phases -------------------------------------------------------
+   //
+   // All eight phases, drawn in a cell's top-right corner. The values match
+   // RE::Moon::Phase exactly, which is what C++ sends -- the enum runs full,
+   // then wanes to new, then waxes back.
+   static var MOON_FULL = 0;
+   static var MOON_WANING_GIBBOUS = 1;
+   static var MOON_THIRD_QUARTER = 2;
+   static var MOON_WANING_CRESCENT = 3;
+   static var MOON_NEW = 4;
+   static var MOON_WAXING_CRESCENT = 5;
+   static var MOON_FIRST_QUARTER = 6;
+   static var MOON_WAXING_GIBBOUS = 7;
+
+   // Where the terminator sits for the crescent and gibbous phases.
+   //
+   // The lit fraction is (1 + k) / 2, so 0.5 puts the crescents at a quarter
+   // lit and the gibbous phases at three quarters -- the true quarter points
+   // of the cycle, and far enough either side of the half-lit quarters to be
+   // told apart at this size.
+   static var MOON_LUNE_K = 0.5;
+
+   // Radius of the disc, and its inset from the cell's top-right corner.
+   //
+   // Small on purpose. This is a margin note on the day, not a feature of it:
+   // it has to be readable at a glance without competing with the day number
+   // or the event name for attention.
+   static var MOON_R = 7;
+   static var MOON_INSET = 11;
+
+   // The lit face, and the unlit body behind it.
+   //
+   // The dark side is DRAWN rather than left empty. A new moon has no lit part
+   // at all, so with nothing behind it the cell would show a blank corner --
+   // indistinguishable from a day with no phase marked. The outline is what
+   // says "this is a moon, and it is dark" instead of "nothing here".
+   static var MOON_LIT_COLOR = 0xE8D9A0;     // the same gold as today's frame
+   static var MOON_LIT_ALPHA = 100;
+   static var MOON_DARK_COLOR = 0x1A1A1A;
+   static var MOON_DARK_ALPHA = 100;
+   static var MOON_EDGE_COLOR = 0x9A8B6A;
+   static var MOON_EDGE_ALPHA = 70;
+   static var MOON_EDGE_LINE = 1;
+
+   // Below DEPTH_CELLS so every frame sits behind every button.
+   static var DEPTH_FRAMES = 99;
    static var MARGIN = 34;
    static var HEADER_H = 128;
    // The detail panel: a divider plus DETAIL_LINES lines of text.
@@ -117,6 +272,16 @@ class MessageBox extends MovieClip
       this.SelectedIndex = -1;
       this.iPlatform = 0;
 
+      // Explicitly false, not merely undefined: handleInput tests this on
+      // every keystroke and an undefined would work by accident rather than by
+      // contract.
+      this.Editing = false;
+
+      // Kept because the vanilla MessageBox constructor does it, and the class
+      // is a drop-in replacement for that symbol. Nothing here defines
+      // onKeyDown any more: the editor reads Key.isDown directly for the CTRL
+      // state, and every key that needs acting on goes through handleInput,
+      // which -- unlike a Key listener -- can actually consume the event.
       Key.addListener(this);
 
       // A plain MovieClip is not focusable by default, and Selection.setFocus
@@ -137,6 +302,7 @@ class MessageBox extends MovieClip
       gfx.io.GameDelegate.addCallBack("setCalendarData", this, "SetCalendarData");
       gfx.io.GameDelegate.addCallBack("setPlatform", this, "SetPlatform");
       gfx.io.GameDelegate.addCallBack("setKeys", this, "SetKeys");
+      gfx.io.GameDelegate.addCallBack("setNoteKeys", this, "SetNoteKeys");
    }
 
    // The game's font, referenced the way the vanilla fields reference it.
@@ -168,6 +334,10 @@ class MessageBox extends MovieClip
    // Prompt bar metrics.
    static var ScanTable;
 
+   // Scan code -> printable name, for the editor's hint line. Built lazily by
+   // ScanName.
+   static var ScanNames;
+
    // Gap between a prompt's icon and its caption. The icon's own width is
    // measured at build time, so this is only the space after it.
    static var PROMPT_ICON_GAP = 8;
@@ -187,9 +357,54 @@ class MessageBox extends MovieClip
    // Popup metrics. The width is fixed; the height is MEASURED from the
    // wrapped text, so a long description extends the panel rather than being
    // clipped -- which is the whole point of showing it in a popup.
+   // Matches the clamp in Notes.cpp. A longer string would be truncated on the
+   // C++ side, so the field refuses it rather than showing text that will not
+   // survive the save.
+   static var NOTE_MAX_CHARS = 1024;
+
+   // VIRTUAL key codes, matching what SetKeys already converts its bindings to
+   // -- details.code carries VK values here, not DirectInput scan codes.
+   //
+   // Tested alongside navEquivalent rather than instead of it: navEquivalent
+   // covers Enter and Escape once the game has mapped them, but an input field
+   // with focus can change what gets mapped, and Tab has no navEquivalent at
+   // all. Checking both is what makes the editor's keys reliable.
+   static var KEY_TAB = 9;
+   static var KEY_ENTER = 13;
+   static var KEY_ESCAPE = 27;
+
+   // DirectInput SCAN codes, for skse.GetLastKeycode() -- the editor matches
+   // on these because the VK values above are what the binding layer rewrites
+   // keys INTO, and are therefore useless for telling real keys apart.
+   static var SCAN_ESCAPE = 1;
+   static var SCAN_TAB = 15;
+   static var SCAN_ENTER = 28;
+   static var SCAN_UNKNOWN = -1;
+
+
    static var POPUP_W = 520;
    static var POPUP_PAD = 30;
    static var POPUP_MIN_H = 110;
+
+   // The delete confirmation window. Smaller than the day popup: it holds one
+   // question and two options, and a panel sized for prose would dwarf them.
+   static var CONFIRM_W = 400;
+   static var CONFIRM_H = 130;
+   static var CONFIRM_GAP = 48;
+
+   // The note editor's window. Wider than the confirmation because it holds
+   // two text fields and a hint line; the height covers the fields' existing
+   // layout, which runs from the heading at -100 to the hint at +76.
+   static var EDIT_W = 520;
+   static var EDIT_H = 232;
+
+   // Tighter than the main bar's PROMPT_GAP: four prompts have to fit inside
+   // EDIT_W, where the menu's own bar has the whole panel width.
+   static var EDIT_PROMPT_GAP = 18;
+
+   // Room the day popup leaves for its note prompt, below the body text.
+   static var POPUP_PROMPT_H = 34;
+
 
    // Wraps already-marked-up runs in one centred paragraph.
    //
@@ -409,6 +624,139 @@ class MessageBox extends MovieClip
    {
       var handled = false;
 
+      // THE EDITOR OWNS THE KEYBOARD. Checked before everything else,
+      // including the popup branch below.
+      //
+      // Only three keys act: Tab moves between the fields, Enter saves, Escape
+      // cancels. EVERY other key is passed down pathToFocus so the focused
+      // input field receives it as a character -- and then true is returned
+      // regardless, so nothing reaches the grid, the month keys, or the game.
+      //
+      // Escape is handled HERE rather than falling through to the close
+      // branch: without this, cancelling an edit would close the whole menu
+      // and (worse) skip EndEdit, leaving AllowTextInput on.
+      // WHILE EDITING, THIS MENU'S JOB IS TO GET OUT OF THE WAY.
+      //
+      // Typed characters never travel through handleInput. Scaleform routes
+      // them straight to whatever Selection.setFocus points at -- but only if
+      // the menu does NOT claim the event: FocusHandler.handleInput continues
+      // past the menu only when the menu returns something other than true.
+      //
+      // So returning true here (to "block" keys) is exactly what stops the
+      // field ever receiving a character. It looks identical to the game
+      // eating the keys, and it is the reason the box appeared frozen.
+      //
+      // Nor may pathToFocus be delegated down: a bare TextField has no
+      // handleInput, so getPathToFocus does not include it, and delegating
+      // just calls this menu again.
+      //
+      // Esc / Enter / Tab come from onKeyDown instead, off the real scan code.
+      // Only the gamepad is handled here, because it produces no scan code.
+      // Modelled on skyui.components.SearchWidget.handleInput, which is the
+      // working reference for a Scaleform text field in Skyrim.
+      //
+      // Two things there matter and both were wrong here before:
+      //
+      //   * Enter / Tab / Escape are matched on navEquivalent, and end the
+      //     edit. They are NOT returned true for -- SearchWidget falls through
+      //     to the delegation below even for these.
+      //
+      //   * The event is then delegated with pathToFocus.shift(), and only its
+      //     answer decides the return value. Returning true unconditionally
+      //     (to "block" keys) is what stops characters reaching the field.
+      // The delete confirmation owns the keyboard while it is open.
+      //
+      // Checked before the editor branch and returns true for EVERYTHING, so
+      // no keystroke reaches the text fields behind it -- a modal question
+      // that let you keep typing into the box underneath would be a lie.
+      // Modelled on the vanilla MessageBox, which is the game's own Yes/No
+      // dialog and what the wait menu's confirmation is built from:
+      //
+      //   * ESCAPE, GAMEPAD_B and TAB all cancel. Tab included -- vanilla
+      //     treats it as a cancel, not as a field switch, and matching that is
+      //     the whole point of this window feeling native.
+      //   * Everything else is delegated to the focused button, which is a
+      //     real gfx.controls.Button and handles its own arrows and Enter.
+      // Enter answers Yes, Tab answers No -- the vanilla wait menu's own
+      // scheme, where each answer has its own key and there is nothing to
+      // select. Escape and Gamepad-B also cancel, as they do everywhere.
+      //
+      // Every key is swallowed regardless, so nothing behind this window can
+      // act while it is up.
+      if(this.Confirming)
+      {
+         if(Shared.GlobalFunc.IsKeyPressed(details))
+         {
+            if(details.navEquivalent == gfx.ui.NavigationCode.ENTER
+               || details.navEquivalent == gfx.ui.NavigationCode.GAMEPAD_A)
+            {
+               this.OnConfirmYes();
+            }
+            else if(details.navEquivalent == gfx.ui.NavigationCode.TAB
+                    || details.code == 9
+                    || details.navEquivalent == gfx.ui.NavigationCode.ESCAPE
+                    || details.navEquivalent == gfx.ui.NavigationCode.GAMEPAD_B)
+            {
+               this.OnConfirmNo();
+            }
+         }
+
+         return true;
+      }
+
+      if(this.Editing)
+      {
+         if(Shared.GlobalFunc.IsKeyPressed(details))
+         {
+            // The delete combination, handled HERE rather than in onKeyDown.
+            //
+            // onKeyDown is only a listener -- it can see the key but cannot
+            // stop it, so the "d" of Ctrl+D was still typed into the field.
+            // Returning true from handleInput is what actually swallows it.
+            //
+            // The scan code comes from skse.GetLastKeycode because inside a
+            // focused field details.code is the binding, not the key; the CTRL
+            // state comes from Key.isDown, which details does not carry.
+            var delScan = MessageBox.SCAN_UNKNOWN;
+            if(skse != undefined)
+            {
+               delScan = skse.GetLastKeycode(true);
+            }
+
+            if(delScan == this.NoteDeleteScan
+               && (!this.NoteDeleteCtrl || Key.isDown(Key.CONTROL)))
+            {
+               this.OpenDeleteConfirm();
+               return true;
+            }
+
+            if(details.navEquivalent == gfx.ui.NavigationCode.ENTER
+               || details.navEquivalent == gfx.ui.NavigationCode.GAMEPAD_A)
+            {
+               this.EndEdit(true);
+            }
+            else if(details.navEquivalent == gfx.ui.NavigationCode.TAB)
+            {
+               this.FocusEditField(this.EditField == 0 ? 1 : 0);
+               return true;
+            }
+            else if(details.navEquivalent == gfx.ui.NavigationCode.ESCAPE
+                    || details.navEquivalent == gfx.ui.NavigationCode.GAMEPAD_B)
+            {
+               this.EndEdit(false);
+               return true;
+            }
+
+            var next = pathToFocus.shift();
+            if(next.handleInput(details, pathToFocus))
+            {
+               return true;
+            }
+         }
+
+         return false;
+      }
+
       if(Shared.GlobalFunc.IsKeyPressed(details))
       {
          // While the popup is open it owns the keyboard: anything that would
@@ -416,6 +764,26 @@ class MessageBox extends MovieClip
          // Returning true either way stops the key reaching the grid.
          if(this.Popup != undefined)
          {
+            // The note key starts editing this day. Checked before the close
+            // keys so it cannot be swallowed by them.
+            //
+            // Matched on the REAL scan code from skse.GetLastKeycode, so the
+            // INI's NoteKey works whatever it is set to. N by default, not E:
+            // E never reaches a custom menu -- the game consumes it before
+            // Scaleform sees it -- so binding to it would look like the
+            // feature simply not working.
+            var noteScan = MessageBox.SCAN_UNKNOWN;
+            if(skse != undefined)
+            {
+               noteScan = skse.GetLastKeycode(true);
+            }
+
+            if(noteScan == this.NoteKeyScan)
+            {
+               this.BeginEdit(this.PopupDay);
+               return true;
+            }
+
             if(details.code == this.KeyClose || details.code == this.KeyClosePad
                || details.navEquivalent == gfx.ui.NavigationCode.ESCAPE
                || details.navEquivalent == gfx.ui.NavigationCode.GAMEPAD_B
@@ -537,6 +905,10 @@ class MessageBox extends MovieClip
       if(this.SelectedIndex >= 0 && this.Cells[this.SelectedIndex] != undefined)
       {
          this.Cells[this.SelectedIndex].focused = 0;
+
+         // Back to plain (or today) -- PaintCellFrame restores whichever from
+         // the frame's own remembered flag.
+         this.PaintCellFrame(this.SelectedIndex, false);
       }
       this.SelectedIndex = -1;
 
@@ -565,6 +937,7 @@ class MessageBox extends MovieClip
       if(this.SelectedIndex >= 0 && this.Cells[this.SelectedIndex] != undefined)
       {
          this.Cells[this.SelectedIndex].focused = 0;
+         this.PaintCellFrame(this.SelectedIndex, false);
       }
 
       this.SelectedIndex = aiIndex;
@@ -574,6 +947,7 @@ class MessageBox extends MovieClip
       {
          cell.focused = 1;
          Selection.setFocus(cell);
+         this.PaintCellFrame(aiIndex, true);
          this.ShowDetail(this.Data.days[aiIndex]);
       }
    }
@@ -610,6 +984,12 @@ class MessageBox extends MovieClip
       }
       this.DrawPrompts();
 
+      // BuildGrid sizes the cells and draws their frames, so the fitted
+      // CELL_H has to be settled BEFORE it runs -- ResetDimensions at the end
+      // of this function only repositions containers and would leave cells
+      // built at the previous height. FitCellHeight is cheap and idempotent,
+      // so calling it in both places is fine.
+      this.FitCellHeight();
       this.BuildGrid();
 
       // The heading keeps MessageText's own vanilla format, so it alone would
@@ -761,6 +1141,10 @@ class MessageBox extends MovieClip
       {
          this.HeaderContainer.removeMovieClip();
       }
+      if(this.FrameContainer != undefined)
+      {
+         this.FrameContainer.removeMovieClip();
+      }
       this.Cells.length = 0;
 
       // Fixed depths, not getNextHighestDepth(). BuildGrid runs on every month
@@ -768,6 +1152,7 @@ class MessageBox extends MovieClip
       // bound as the player pages -- and would eventually overtake the nav
       // buttons, which are allocated once in the constructor.
       this.HeaderContainer = this.createEmptyMovieClip("Headers", MessageBox.DEPTH_HEADERS);
+      this.FrameContainer = this.createEmptyMovieClip("Frames", MessageBox.DEPTH_FRAMES);
       this.CellContainer = this.createEmptyMovieClip("Cells", MessageBox.DEPTH_CELLS);
 
       var gridW = MessageBox.COLS * MessageBox.CELL_W
@@ -816,6 +1201,35 @@ class MessageBox extends MovieClip
          // cache and runs the Constraints that resize ButtonText with it.
          cell.setSize(MessageBox.CELL_W, MessageBox.CELL_H);
 
+         // Hide the vanilla selection art -- the drawn frame shows selection
+         // now, and the two together read as clutter. _visible rather than
+         // removing it: it is a timeline child that the button's own state
+         // frames re-place, so removal would not stick.
+         if(cell.SelectionIndicatorHolder != undefined)
+         {
+            cell.SelectionIndicatorHolder._visible = false;
+         }
+
+         // Stretch the clickable region to the whole cell.
+         //
+         // MessageBoxButton's frame 1 does `this.hitArea = this.HitArea`,
+         // pointing at a shape authored for the vanilla message-box button.
+         // setSize() does NOT resize it -- it is not part of the Constraints,
+         // which only cover ButtonText -- so every cell kept a hit region the
+         // size and shape of the original button, centred in the middle of
+         // the square. Clicks near a cell's edges landed on nothing.
+         //
+         // Sized rather than replaced: the shape is already the hitArea and
+         // is invisible (the vanilla art relies on that), so resizing it is
+         // enough and needs no new symbol in the SWF.
+         if(cell.HitArea != undefined)
+         {
+            cell.HitArea._width = MessageBox.CELL_W;
+            cell.HitArea._height = MessageBox.CELL_H;
+            cell.HitArea._x = -MessageBox.CELL_W / 2;
+            cell.HitArea._y = -MessageBox.CELL_H / 2;
+         }
+
          var text = cell.ButtonText;
          text.autoSize = "none";
          text.html = true;
@@ -828,6 +1242,14 @@ class MessageBox extends MovieClip
          text.multiline = true;
          text._width = MessageBox.CELL_W;
          text._x = -MessageBox.CELL_W / 2;
+
+         // _y is set explicitly now that the cell is taller than the button
+         // art it came from. ButtonText's authored position is centred for a
+         // 55px plate, so in an 80px box it would float above the middle and
+         // sit off-centre inside the drawn frame. Pinning it near the top
+         // also gives the event name the room below the day number.
+         text._height = MessageBox.CELL_H - 8;
+         text._y = -MessageBox.CELL_H / 2 + 4;
 
          // Today is marked in the text itself, since the cell art is shared
          // with every other button.
@@ -844,6 +1266,9 @@ class MessageBox extends MovieClip
                                       MessageBox.FONT_SIZE_EVENT, true);
          }
          text.SetText(mark, true);
+
+         // The square, drawn behind the button at the same centre.
+         this.DrawCellFrame(i, cell._x, cell._y, day.isToday, day.moon);
 
          cell.disableFocus = false;
          cell.CellIndex = i;
@@ -862,6 +1287,301 @@ class MessageBox extends MovieClip
          }
          i = i + 1;
       }
+   }
+
+   // One day's box: a filled rectangle with a border, drawn into its own clip
+   // inside FrameContainer.
+   //
+   // aiX/aiY are the CELL'S CENTRE, because a MessageBoxButton's origin is its
+   // centre and the frame has to line up with the button it sits behind -- so
+   // the rectangle is drawn from -W/2,-H/2 and the clip is moved to the centre,
+   // rather than drawing at a top-left corner.
+   //
+   // moveTo/lineTo rather than drawRect: AS2's drawing API has no rectangle
+   // primitive, so the four sides are walked by hand.
+   // The clip is created once and REDRAWN on selection changes, so it keeps a
+   // fixed name and its own remembered "is today" flag -- PaintCellFrame
+   // needs that to restore the right look when selection moves away.
+   function DrawCellFrame(aiIndex, aiX, aiY, abToday, aiMoon)
+   {
+      var frame = this.FrameContainer.createEmptyMovieClip(
+         "frame" + aiIndex, aiIndex);
+
+      frame._x = aiX;
+      frame._y = aiY;
+      frame.IsToday = abToday;
+
+      // Remembered on the clip alongside IsToday, and for the same reason:
+      // PaintCellFrame clears and redraws on every selection change, so it
+      // needs to know what to put back without going to the data again.
+      //
+      // undefined means "no phase on this day" -- C++ omits the member rather
+      // than sending a sentinel, so the absence carries through unchanged.
+      frame.MoonPhase = aiMoon;
+
+      this.PaintCellFrame(aiIndex, false);
+   }
+
+   // Paint one frame in its current state.
+   //
+   // Three looks, in priority order: selected (bright white, thick), today
+   // (gold, thick), plain (muted gold, hairline, low alpha). Selection wins
+   // over today because it is the thing the player is actively moving; a
+   // today cell that is also selected still reads as today by keeping the
+   // thicker border.
+   //
+   // clear() first, because a redraw would otherwise stack a second rectangle
+   // on the first -- and a thin old border showing through a new one looks
+   // like a rendering fault rather than a state.
+   function PaintCellFrame(aiIndex, abSelected)
+   {
+      var frame = this.FrameContainer["frame" + aiIndex];
+      if(frame == undefined)
+      {
+         return;
+      }
+
+      frame.clear();
+
+      var w = MessageBox.CELL_W;
+      var h = MessageBox.CELL_H;
+      var l = -w / 2;
+      var t = -h / 2;
+
+      var lineColor;
+      var lineAlpha;
+      var lineWidth;
+
+      if(abSelected)
+      {
+         lineColor = MessageBox.SELECTION_COLOR;
+         lineAlpha = MessageBox.SELECTION_ALPHA;
+         lineWidth = MessageBox.SELECTION_LINE;
+      }
+      else if(frame.IsToday)
+      {
+         lineColor = MessageBox.FRAME_TODAY_COLOR;
+         lineAlpha = MessageBox.FRAME_TODAY_ALPHA;
+         lineWidth = MessageBox.TODAY_LINE;
+      }
+      else
+      {
+         lineColor = MessageBox.FRAME_LINE_COLOR;
+         lineAlpha = MessageBox.FRAME_LINE_ALPHA;
+         lineWidth = MessageBox.FRAME_LINE;
+      }
+
+      frame.lineStyle(lineWidth, lineColor, lineAlpha);
+      frame.beginFill(MessageBox.FRAME_FILL_COLOR, MessageBox.FRAME_FILL_ALPHA);
+      frame.moveTo(l, t);
+      frame.lineTo(l + w, t);
+      frame.lineTo(l + w, t + h);
+      frame.lineTo(l, t + h);
+      frame.lineTo(l, t);
+      frame.endFill();
+
+      // The moon last, so it sits over the cell fill rather than under it.
+      // Redrawn here rather than in DrawCellFrame because the clear() above
+      // takes it with the border -- it has to go back on every repaint.
+      if(frame.MoonPhase != undefined)
+      {
+         this.DrawMoon(frame, frame.MoonPhase);
+      }
+   }
+
+   // --- Moon phases -------------------------------------------------------
+   //
+   // Drawn with the drawing API rather than attached as artwork, for the same
+   // reason the cell frames are: no new symbol has to be authored into the
+   // SWF, so the phases survive the FFDec injection step untouched and a UI
+   // replacer inherits them without having to hold the assets.
+   //
+   // AS2 has no circle primitive -- and no arc -- so everything below is built
+   // from quadratic beziers, which is what the drawing API's curveTo takes.
+
+   // How many bezier segments make up one quarter turn.
+   //
+   // Two. A single quadratic over 90 degrees bows visibly off the circle;
+   // splitting it in half brings the worst-case radial error at MOON_R down to
+   // about 0.02px, which is far below a pixel and so invisible. More segments
+   // would cost draw calls for an error already well under what can be seen.
+   static var ARC_SEGMENTS = 2;
+
+   // Walks a quarter turn of a circle centred on (aiCX, aiCY), from angle
+   // aiFrom to aiFrom + aiSweep radians. Assumes the pen is already at the
+   // start point -- the callers below all move or draw into position first,
+   // which is what lets these be chained into a closed outline.
+   // aiRX and aiRY are separate radii, so this walks an ELLIPSE as readily as
+   // a circle. That is what the terminator needs: the shadow boundary on a
+   // sphere projects to a half-ellipse whose width shrinks to nothing at the
+   // quarters, and passing aiRX == aiRY is just the circular case of it.
+   function ArcTo(aClip, aiCX, aiCY, aiRX, aiRY, aiFrom, aiSweep)
+   {
+      var steps = MessageBox.ARC_SEGMENTS;
+      var step = aiSweep / steps;
+      var i = 0;
+      while(i < steps)
+      {
+         var a0 = aiFrom + step * i;
+         var a1 = a0 + step;
+
+         // The control point sits where the tangents at the two ends meet.
+         // That is the arc's midpoint pushed out by 1/cos(half the sweep),
+         // which is what makes the curve pass through the arc rather than
+         // cutting the chord. Scaling x and y independently afterwards turns
+         // the circle into the ellipse without disturbing that.
+         var mid = (a0 + a1) / 2;
+         var scale = 1 / Math.cos((a1 - a0) / 2);
+
+         aClip.curveTo(aiCX + Math.cos(mid) * aiRX * scale,
+                       aiCY + Math.sin(mid) * aiRY * scale,
+                       aiCX + Math.cos(a1) * aiRX,
+                       aiCY + Math.sin(a1) * aiRY);
+         i = i + 1;
+      }
+   }
+
+   // A full circle, as a closed path. Used for the dark body and for the
+   // full moon's lit face.
+   function DrawDisc(aClip, aiCX, aiCY, aiR)
+   {
+      aClip.moveTo(aiCX + aiR, aiCY);
+      this.ArcTo(aClip, aiCX, aiCY, aiR, aiR, 0, Math.PI / 2);
+      this.ArcTo(aClip, aiCX, aiCY, aiR, aiR, Math.PI / 2, Math.PI / 2);
+      this.ArcTo(aClip, aiCX, aiCY, aiR, aiR, Math.PI, Math.PI / 2);
+      this.ArcTo(aClip, aiCX, aiCY, aiR, aiR, Math.PI * 3 / 2, Math.PI / 2);
+   }
+
+   // Half a disc: the lit face of a quarter moon.
+   //
+   // abRightLit picks which side is lit. First quarter is lit on the right as
+   // the moon waxes; third quarter on the left as it wanes. Drawn as a
+   // half-circle closed by its own diameter, so it needs no mask -- a mask
+   // would mean a second clip per cell and 31 more of them per month.
+   // The lit part of a moon at any phase, as one closed path.
+   //
+   // Every phase has the same two boundaries:
+   //
+   //   * the LIMB -- the outer edge of the disc on the lit side, always a
+   //     semicircle of radius aiR;
+   //   * the TERMINATOR -- the shadow boundary running pole to pole. On a
+   //     sphere this is a circle seen edge-on, so it projects to a half
+   //     ellipse: full width at new and full moon, and pinched to a straight
+   //     line at the quarters.
+   //
+   // aiK is where the terminator sits, -1 to +1: the fraction of the disc lit
+   // is (1 + aiK) / 2, so -1 is new, 0 is a quarter, +1 is full. Its SIGN is
+   // what separates a crescent from a gibbous -- negative and the ellipse
+   // bulges into the lit side, eating it away to a sliver; positive and it
+   // bulges the other way, leaving all but a sliver.
+   //
+   // Building the lune this way means one path per phase and no masking. A
+   // mask would need a second clip for every cell, and 31 of those a month is
+   // exactly the kind of thing that makes a menu feel heavy.
+   function DrawLune(aClip, aiCX, aiCY, aiR, abRightLit, aiK)
+   {
+      // Start at the top pole, round the lit limb to the bottom pole, then
+      // back up the terminator to close.
+      var sign = abRightLit ? 1 : -1;
+      var from = abRightLit ? -Math.PI / 2 : Math.PI / 2;
+      var startY = aiCY - sign * aiR;
+
+      aClip.moveTo(aiCX, startY);
+
+      // The limb: two quarter turns down the lit side.
+      this.ArcTo(aClip, aiCX, aiCY, aiR, aiR, from, Math.PI / 2);
+      this.ArcTo(aClip, aiCX, aiCY, aiR, aiR, from + Math.PI / 2, Math.PI / 2);
+
+      // The terminator, back the other way.
+      //
+      // The x-radius is NOT multiplied by `sign`. The terminator arc is
+      // already being walked from the dark side (angles from + PI onwards),
+      // so the sweep direction alone puts it on the correct side; folding
+      // `sign` in as well would cancel that out and mirror the bulge, which
+      // renders a waning gibbous as a crescent and vice versa.
+      //
+      // aiK's own sign is what flips the bulge: negative eats into the lit
+      // side (crescent), positive leaves all but a sliver (gibbous). At
+      // aiK == 0 the radius is zero and the two arcs collapse onto the
+      // straight diameter of a quarter moon.
+      var rx = aiR * aiK;
+      this.ArcTo(aClip, aiCX, aiCY, rx, aiR, from + Math.PI, Math.PI / 2);
+      this.ArcTo(aClip, aiCX, aiCY, rx, aiR, from + Math.PI * 3 / 2, Math.PI / 2);
+   }
+
+   // The moon marker for one cell.
+   //
+   // Drawn into the cell's own frame clip rather than a clip of its own: the
+   // frame is already positioned at the cell centre, is already cleared and
+   // repainted on every selection change, and is torn down with the grid. A
+   // separate clip would need all three of those handled again, and would be
+   // one more thing to keep in step with PaintCellFrame.
+   //
+   // That does mean this MUST be called from PaintCellFrame, after its clear()
+   // -- which is exactly where it is called from.
+   function DrawMoon(aClip, aiPhase)
+   {
+      // Top-right corner of the cell. The clip's origin is the cell centre,
+      // so the corner is +W/2, -H/2 and the inset walks back in from there.
+      var cx = MessageBox.CELL_W / 2 - MessageBox.MOON_INSET;
+      var cy = -MessageBox.CELL_H / 2 + MessageBox.MOON_INSET;
+      var r = MessageBox.MOON_R;
+
+      // The dark body first, so every phase sits on the same disc and the
+      // outline is unbroken whatever is lit on top of it.
+      aClip.lineStyle(MessageBox.MOON_EDGE_LINE, MessageBox.MOON_EDGE_COLOR,
+                      MessageBox.MOON_EDGE_ALPHA);
+      aClip.beginFill(MessageBox.MOON_DARK_COLOR, MessageBox.MOON_DARK_ALPHA);
+      this.DrawDisc(aClip, cx, cy, r);
+      aClip.endFill();
+
+      // A new moon is the dark body alone -- nothing lit to add.
+      if(aiPhase == MessageBox.MOON_NEW)
+      {
+         return;
+      }
+
+      // The lit part, drawn without a line so it does not double the outline
+      // already around the body.
+      aClip.lineStyle(undefined);
+      aClip.beginFill(MessageBox.MOON_LIT_COLOR, MessageBox.MOON_LIT_ALPHA);
+
+      if(aiPhase == MessageBox.MOON_FULL)
+      {
+         this.DrawDisc(aClip, cx, cy, r);
+      }
+      else
+      {
+         // Everything between new and full is a lune: which side is lit, and
+         // how far across it the terminator has travelled.
+         //
+         // WAXING phases are lit on the right and WANING on the left, which is
+         // the northern-hemisphere convention and the one the game's own moon
+         // textures follow -- the icon should not disagree with the sky.
+         //
+         // The k values are the quarter points of the cycle: -0.5 is a
+         // quarter lit (crescent), 0 is half (quarter moon), +0.5 is three
+         // quarters (gibbous). See DrawLune -- lit fraction is (1 + k) / 2.
+         var rightLit = aiPhase == MessageBox.MOON_WAXING_CRESCENT
+                     || aiPhase == MessageBox.MOON_FIRST_QUARTER
+                     || aiPhase == MessageBox.MOON_WAXING_GIBBOUS;
+
+         var k = 0;
+         if(aiPhase == MessageBox.MOON_WAXING_CRESCENT
+         || aiPhase == MessageBox.MOON_WANING_CRESCENT)
+         {
+            k = -MessageBox.MOON_LUNE_K;
+         }
+         else if(aiPhase == MessageBox.MOON_WAXING_GIBBOUS
+              || aiPhase == MessageBox.MOON_WANING_GIBBOUS)
+         {
+            k = MessageBox.MOON_LUNE_K;
+         }
+
+         this.DrawLune(aClip, cx, cy, r, rightLit, k);
+      }
+
+      aClip.endFill();
    }
 
    function onCellPress(event)
@@ -1028,6 +1748,22 @@ class MessageBox extends MovieClip
    // Called by the plugin with the scan codes it is actually listening for.
    // Keyboard and gamepad codes arrive together; which set is drawn depends
    // on abGamepad, exactly as CharacterSheet.SetGamepad does it.
+   // The editor's key bindings, from the INI via the plugin.
+   //
+   // Stored as SCAN codes and compared against skse.GetLastKeycode(), not
+   // converted to VK like the month keys above -- inside a focused text field
+   // the game's binding layer rewrites VK values and they cannot be told
+   // apart. See onKeyDown.
+   function SetNoteKeys(aiNote, aiSave, aiCancel, aiSwitch, aiDelete, abDeleteCtrl)
+   {
+      this.NoteKeyScan = Number(aiNote);
+      this.NoteSaveScan = Number(aiSave);
+      this.NoteCancelScan = Number(aiCancel);
+      this.NoteSwitchScan = Number(aiSwitch);
+      this.NoteDeleteScan = Number(aiDelete);
+      this.NoteDeleteCtrl = abDeleteCtrl;
+   }
+
    function SetKeys(abGamepad, aiPrev, aiNext, aiToday, aiPrevPad, aiNextPad,
                     aiTodayPad, aiClose, aiClosePad)
    {
@@ -1051,6 +1787,11 @@ class MessageBox extends MovieClip
       this.KeyNextPad = MessageBox.ScanToVK(aiNextPad);
       this.KeyTodayPad = MessageBox.ScanToVK(aiTodayPad);
       this.KeyClosePad = MessageBox.ScanToVK(aiClosePad);
+
+      // The confirmation window keeps its arrow icons on both devices: the
+      // d-pad and the arrow keys do the same thing there, so there is nothing
+      // to swap. (The month prompts still swap, because their face buttons
+      // genuinely differ from their keys.)
 
       // Held so the bar can be drawn later, once BuildPromptBar has run.
       this.PendingKeys = { gamepad: abGamepad,
@@ -1122,6 +1863,18 @@ class MessageBox extends MovieClip
       var head = this.FormatDate(aDay.day, this.Data.monthName, this.Data.year);
       var body = "";
 
+      // The moon, when the day is marked. On the head line next to the date,
+      // because that is what the icon in the cell is a shorthand FOR -- the
+      // player looking at a gold disc in a corner should be able to find out
+      // what it means without opening anything.
+      //
+      // The name is sent from C++ already translated, so nothing here maps a
+      // phase number onto a word.
+      if(aDay.moonName != undefined && aDay.moonName.length > 0)
+      {
+         head = head + "   " + aDay.moonName;
+      }
+
       if(aDay.events.length > 0)
       {
          var names = "";
@@ -1169,7 +1922,13 @@ class MessageBox extends MovieClip
    // popup can grow to fit its text.
    function OpenDayPopup(aDay)
    {
-      if(aDay == undefined || aDay.events.length == 0)
+      // An empty day still opens.
+      //
+      // It used to return here, because a popup with nothing in it was just a
+      // blank box. Now it is where a note is added, so opening a day with no
+      // events is the normal way to write one -- and refusing would make the
+      // commonest case unreachable.
+      if(aDay == undefined)
       {
          return;
       }
@@ -1180,6 +1939,7 @@ class MessageBox extends MovieClip
       // Attached to _root instead, every key would stop working while it was
       // open.
       this.Popup = this.createEmptyMovieClip("DayPopup", MessageBox.DEPTH_POPUP);
+      this.PopupDay = aDay;
 
       var panel = this.Popup.attachMovie("CalendarPanel", "panel", 1);
 
@@ -1234,15 +1994,56 @@ class MessageBox extends MovieClip
          }
          i = i + 1;
       }
+
+      // How to add or change the note. Always shown, including on a day with
+      // no events at all -- that is the empty popup's only content, and
+      // without it the box would look broken rather than inviting.
+      if(out.length > 0)
+      {
+         out = out + "<br/><br/>";
+      }
       body.htmlText = this.MarkupBlock(out);
 
       // Height comes from the text, measured after it is set. autoSize keeps
       // _height honest, so nothing here has to guess at a line count.
-      var contentH = head._height + 12 + body._height;
+      // The note prompt: icon + caption, clickable, under the body text.
+      //
+      // A prompt rather than a line of prose, so it matches the month prompts
+      // and the editor's own bar -- and so a mouse player can open the editor
+      // at all. Built before contentH is measured, because it adds to the
+      // height the panel has to cover.
+      this.PopupPrompts = new Array();
+      var pbar = this.Popup.createEmptyMovieClip("pbar", 6);
+      this.PopupPromptBar = pbar;
+
+      this.AddEditPrompt(
+         pbar, this.PopupPrompts, this.NoteKeyScan,
+         this.FindNote(aDay) != undefined ? this.Label("noteEdit2", "Edit note")
+                                          : this.Label("noteAdd", "Add note"),
+         "OnPromptAddNote");
+
+      // Centred on the panel.
+      pbar._x = -pbar._width / 2;
+
+      var contentH = head._height + 12 + body._height
+                   + MessageBox.POPUP_PROMPT_H;
       var panelH = contentH + MessageBox.POPUP_PAD * 2;
       if(panelH < MessageBox.POPUP_MIN_H)
       {
          panelH = MessageBox.POPUP_MIN_H;
+      }
+
+      // And a ceiling, because this height is MEASURED from the text.
+      //
+      // A day carrying several events with long descriptions could otherwise
+      // grow the panel past the stage and clip top and bottom -- the same way
+      // the grid did before FitCellHeight. The body text is clipped instead of
+      // the frame, which at least leaves a window that looks deliberate.
+      var maxH = MessageBox.STAGE_H - MessageBox.SCREEN_PAD * 2;
+      if(panelH > maxH)
+      {
+         panelH = maxH;
+         body._height = panelH - MessageBox.POPUP_PAD * 2 - head._height - 12;
       }
 
       panel._width = MessageBox.POPUP_W;
@@ -1252,41 +2053,800 @@ class MessageBox extends MovieClip
       head._y = top;
       body._y = top + head._height + 12;
 
+      // Below the body, inside the panel's bottom padding.
+      if(this.PopupPromptBar != undefined)
+      {
+         this.PopupPromptBar._y = body._y + body._height + 8;
+      }
+
       // Centred on the panel, which is itself centred on screen.
       this.Popup._x = 0;
       this.Popup._y = 0;
 
-      // Click the popup to dismiss it. The fill is transparent but covers the
-      // whole panel, so the click cannot fall through to a day cell behind.
-      // focusEnabled stays false: a clip with an onRelease is a button in AS2
-      // and would take focus off the menu, killing every key.
-      this.Popup.beginFill(0x000000, 0);
-      this.Popup.moveTo(-MessageBox.POPUP_W / 2, -panelH / 2);
-      this.Popup.lineTo(MessageBox.POPUP_W / 2, -panelH / 2);
-      this.Popup.lineTo(MessageBox.POPUP_W / 2, panelH / 2);
-      this.Popup.lineTo(-MessageBox.POPUP_W / 2, panelH / 2);
-      this.Popup.endFill();
+      // Click-to-dismiss lives on a SEPARATE clip BEHIND the content, never on
+      // this.Popup itself.
+      //
+      // A clip with an onRelease is a button in AS2, and a button SWALLOWS
+      // mouse events for everything inside it. Putting the handler on the
+      // popup therefore made the whole panel one big button: the text fields
+      // never got the caret, and the Yes/No options could not be clicked --
+      // every press was eaten before it reached them.
+      //
+      // A backdrop at depth 0 sits under the panel art and every control, so
+      // it still catches clicks on empty space (and stops them falling through
+      // to a day cell behind) while leaving the content clickable.
+      var backdrop = this.Popup.createEmptyMovieClip("backdrop", 0);
+      backdrop.beginFill(0x000000, 0);
+      backdrop.moveTo(-MessageBox.POPUP_W / 2, -panelH / 2);
+      backdrop.lineTo(MessageBox.POPUP_W / 2, -panelH / 2);
+      backdrop.lineTo(MessageBox.POPUP_W / 2, panelH / 2);
+      backdrop.lineTo(-MessageBox.POPUP_W / 2, panelH / 2);
+      backdrop.endFill();
 
-      this.Popup.Owner = this;
-      this.Popup.focusEnabled = false;
-      this.Popup.tabEnabled = false;
-      this.Popup.onRelease = function()
+      backdrop.Owner = this;
+
+      // focusEnabled stays false: a button would otherwise take focus off the
+      // menu, killing every key.
+      backdrop.focusEnabled = false;
+      backdrop.tabEnabled = false;
+      backdrop.onRelease = function()
       {
+         // The editor has its own cancel; this only dismisses the day popup.
+         if(this.Owner.Editing || this.Owner.Confirming)
+         {
+            return;
+         }
+
          this.Owner.CloseDayPopup();
          gfx.io.GameDelegate.call("PlaySound", ["UIMenuCancel"]);
       };
-      this.Popup.useHandCursor = false;
+      backdrop.useHandCursor = false;
 
       gfx.io.GameDelegate.call("PlaySound", ["UIMenuOK"]);
    }
 
    function CloseDayPopup()
    {
+      // The editor is a child of the popup, so tearing the popup down without
+      // ending the edit would destroy the field while the game still believed
+      // text input was active -- and AllowTextInput would never be turned back
+      // off. See EndEdit: that is the failure that leaves the player unable to
+      // move after closing the menu.
+      if(this.Editing)
+      {
+         this.EndEdit(false);
+      }
+
       if(this.Popup != undefined)
       {
          this.Popup.removeMovieClip();
          this.Popup = undefined;
       }
+      this.PopupDay = undefined;
+   }
+
+   // ---- the note editor -------------------------------------------------
+   //
+   // Two input fields (name, description) over the day popup, with the game's
+   // keyboard handed to Flash while they are open.
+   //
+   // THE INPUT CONTRACT, which is the whole difficulty of this feature:
+   //
+   //   * The game must be told to stop treating keystrokes as game input, or
+   //     the player types "w" and walks forward instead. This goes through the
+   //     plugin (BeginTextInput / EndTextInput -> RE::ControlMap
+   //     ::AllowTextInput), NOT through fscommand("AllowTextInput", ...):
+   //     Skyrim never routes that fscommand to its control map, so the movie
+   //     asking for it does nothing at all and every key stays with the game.
+   //
+   //   * Selection.setFocus(field) puts the caret in the field. Focus must be
+   //     on the FIELD, not the menu, or the keys arrive nowhere.
+   //
+   //   * handleInput must return true for everything while editing (so no key
+   //     reaches the grid behind) and must still DELEGATE down pathToFocus, or
+   //     the field never sees the characters and typing is silently dead.
+   //
+   //   * AllowTextInput MUST be turned back off on every exit path. Leaving it
+   //     on outlives the menu: the player closes the calendar and cannot move.
+   //     Every exit therefore goes through EndEdit, and CloseDayPopup calls it
+   //     defensively above.
+   function BeginEdit(aDay)
+   {
+      if(this.Editing || this.Popup == undefined)
+      {
+         return;
+      }
+
+      this.Editing = true;
+      this.EditDay = aDay;
+      this.EditField = 0;
+
+      // Whatever the day already has, so editing is editing rather than
+      // always starting blank.
+      var existing = this.FindNote(aDay);
+      var startName = existing != undefined ? existing.name : "";
+      var startDesc = existing != undefined ? existing.description : "";
+
+      var innerW = MessageBox.POPUP_W - MessageBox.POPUP_PAD * 2;
+      var left = -innerW / 2;
+
+      this.EditLayer = this.Popup.createEmptyMovieClip("edit", 50);
+
+      // An opaque backing, so the popup's own text does not show through the
+      // editor and make it unreadable. Drawn BEFORE the border is attached, so
+      // the panel art sits on top of the fill rather than behind it.
+      this.EditLayer.beginFill(0x000000, 90);
+      this.EditLayer.moveTo(-MessageBox.EDIT_W / 2, -MessageBox.EDIT_H / 2);
+      this.EditLayer.lineTo(MessageBox.EDIT_W / 2, -MessageBox.EDIT_H / 2);
+      this.EditLayer.lineTo(MessageBox.EDIT_W / 2, MessageBox.EDIT_H / 2);
+      this.EditLayer.lineTo(-MessageBox.EDIT_W / 2, MessageBox.EDIT_H / 2);
+      this.EditLayer.endFill();
+
+      // The same vanilla border the day popup and the confirmation use, so all
+      // three windows in this menu match.
+      //
+      // Sized only -- CalendarPanel's registration point is its centre, so
+      // setting _x/_y as well would push it half a panel off the window.
+      var editPanel = this.EditLayer.attachMovie("CalendarPanel", "epanel", 0);
+      editPanel._width = MessageBox.FitToStage(MessageBox.EDIT_W, false);
+      editPanel._height = MessageBox.FitToStage(MessageBox.EDIT_H, true);
+
+      // 30px, not 24: at FONT_SIZE (22pt) a 24px field clips the descenders
+      // and the bottom of the glyphs. Text field height has to clear the point
+      // size with room to spare, not merely match it.
+      var head = this.EditLayer.createTextField("ehead", 1, left, -100, innerW, 30);
+      head.selectable = false;
+      head.html = true;
+      head.noTranslate = true;
+      head.htmlText = this.Markup(this.Label("noteEdit", "Note"),
+                                  MessageBox.FONT_SIZE, true);
+
+      this.EditNameLabel = this.MakeEditLabel("lname", 2, left, -68,
+                                              this.Label("noteName", "Name"));
+      this.EditName = this.MakeEditField("fname", 3, left, -44, innerW, 26, startName);
+
+      this.EditDescLabel = this.MakeEditLabel("ldesc", 4, left, -8,
+                                              this.Label("noteDesc", "Description"));
+      this.EditDesc = this.MakeEditField("fdesc", 5, left, 16, innerW, 52, startDesc);
+      this.EditDesc.multiline = true;
+      this.EditDesc.wordWrap = true;
+
+      // A prompt bar, not a line of text: icon + caption per command, clickable
+      // exactly like the month prompts at the top of the menu.
+      this.Confirming = false;
+      this.BuildEditPrompts(76);
+
+      // Hand the keyboard over, then focus. In that order: focusing a field
+      // the game is still filtering for would drop the first keystrokes.
+      //
+      // Through C++, NOT fscommand("AllowTextInput", ...). Skyrim does not
+      // route that fscommand to its control map, so the movie's request was
+      // silently ignored: the field focused, the caret blinked, and every
+      // keystroke was still eaten by the game as movement. The plugin calls
+      // RE::ControlMap::AllowTextInput instead, which is the real switch.
+      // skse.AllowTextInput(true), called straight from ActionScript.
+      //
+      // This is what SkyUI's own search box does (skyui.components
+      // .SearchWidget.startInput) -- SKSE injects AllowTextInput into every
+      // Scaleform movie, so no round trip to the plugin is needed. Going
+      // through C++ worked for the refcount but left the movie's own view of
+      // text mode unset, which is part of why characters never landed.
+      //
+      // The plugin is still told, because it has to suppress its own hotkey
+      // and the menu-control group while a field is live.
+      gfx.io.GameDelegate.call("BeginTextInput", []);
+      if(skse != undefined)
+      {
+         skse.AllowTextInput(true);
+      }
+
+      // Remember what had focus, so it can be restored exactly the way
+      // SearchWidget.endInput does.
+      this.PreviousFocus = gfx.managers.FocusHandler.instance.getFocus(0);
+
+      // Before focusing: a cell that can still take focus will steal it back
+      // the moment the first navigation-ish key arrives.
+      this.SetCellsFocusable(false);
+
+      this.FocusEditField(0);
+
+      gfx.io.GameDelegate.call("PlaySound", ["UIMenuFocus"]);
+   }
+
+   // Writes to the plugin's log. The movie has nowhere else to report, and
+   // guessing at ActionScript behaviour from in-game symptoms has already cost
+   // more than one build.
+   function Log(asText)
+   {
+      gfx.io.GameDelegate.call("Log", [String(asText)]);
+   }
+
+
+   // Remove the note on the day being edited, then close the editor.
+   //
+   // The delete goes through C++ (DeleteNote), which removes it from the store
+   // and schedules the month re-push. EndEdit(false) is used deliberately --
+   // saving here would immediately write the fields back and undo the delete.
+   function DeleteNote()
+   {
+      var day = this.EditDay;
+
+      this.EndEdit(false);
+
+      if(day != undefined)
+      {
+         gfx.io.GameDelegate.call(
+            "DeleteNote", [this.Data.year, this.Data.month, day.day]);
+         gfx.io.GameDelegate.call("PlaySound", ["UIMenuCancel"]);
+      }
+   }
+
+   // ---- the delete confirmation -----------------------------------------
+   //
+   // A small Yes / No panel over the editor, rather than a second press of the
+   // delete key. Deleting is the one destructive thing this menu does, and a
+   // modal question is both clearer than a changing hint line and impossible
+   // to trigger by accident.
+   //
+   // It is drawn INSIDE the editor layer, so it is torn down automatically if
+   // the edit ends for any reason -- there is no way to leave the confirm
+   // panel orphaned on screen.
+   //
+   // Text input stays on while it is open: the fields keep their contents so
+   // that answering No returns the player to exactly what they were typing.
+   // Clamp a window dimension to what the stage can actually show.
+   //
+   // These windows are a fixed size and comfortably fit the authored 1280x720
+   // stage, so this changes nothing today. It is here so that editing EDIT_H
+   // or CONFIRM_W later cannot quietly reintroduce the bug the grid already
+   // had: a panel bigger than the stage is clipped equally top and bottom,
+   // which reads as "the mod is broken on my resolution" rather than as a
+   // number being too large.
+   //
+   // Note this is NOT about the player's monitor. Skyrim scales the whole
+   // movie to the screen, so the budget is the stage's 1280x720 at every
+   // resolution -- a bigger monitor does not grant more room.
+   static function FitToStage(aiSize, abVertical)
+   {
+      var avail = (abVertical ? MessageBox.STAGE_H : MessageBox.STAGE_W)
+                - MessageBox.SCREEN_PAD * 2;
+      return aiSize > avail ? avail : aiSize;
+   }
+
+   function OpenDeleteConfirm()
+   {
+      if(this.Confirming || this.EditLayer == undefined)
+      {
+         return;
+      }
+
+      this.Confirming = true;
+
+      var w = MessageBox.FitToStage(MessageBox.CONFIRM_W, false);
+      var h = MessageBox.FitToStage(MessageBox.CONFIRM_H, true);
+      var innerW = w - MessageBox.POPUP_PAD * 2;
+      var left = -innerW / 2;
+
+      // Above every editor field.
+      this.ConfirmLayer = this.EditLayer.createEmptyMovieClip("confirm", 90);
+
+      // The vanilla border art, the same symbol the day popup uses, rather
+      // than a drawn rectangle. It carries a DefineScalingGrid (9-slice), so
+      // setting _width/_height stretches it without smearing the corners --
+      // and the window then matches every other panel in the menu instead of
+      // looking like something this mod drew itself.
+      // _width and _height ONLY -- do not set _x/_y.
+      //
+      // CalendarPanel's registration point is already its centre, which is why
+      // the day popup positions it by size alone. Setting _x = -w/2 as well
+      // shifted the border half a panel off the window it was supposed to
+      // frame.
+      var panel = this.ConfirmLayer.attachMovie("CalendarPanel", "cpanel", 1);
+      panel._width = w;
+      panel._height = h;
+
+      var q = this.ConfirmLayer.createTextField("cq", 2, left, -h / 2 + 24, innerW, 32);
+      q.selectable = false;
+      q.html = true;
+      q.noTranslate = true;
+      q.wordWrap = true;
+      q.multiline = true;
+      q.htmlText = this.Markup(
+         this.Label("noteDeleteAsk", "Delete this note?"),
+         MessageBox.FONT_SIZE, true);
+
+      // Enter Yes / Tab No, as key prompts -- exactly how the vanilla wait
+      // menu asks the same question.
+      //
+      // There is NO selection here and no cursor to move: each answer is bound
+      // to its own key and the icon says which. That is the whole pattern, and
+      // it is why this uses the prompt bar rather than a pair of buttons --
+      // buttons would imply a highlight to move around, which vanilla does not
+      // have.
+      //
+      // AddEditPrompt is reused as-is, so these get the same icon+caption
+      // construction, the same hover dimming and the same click handling as
+      // every other prompt in the menu.
+      this.ConfirmPrompts = new Array();
+      var cbar = this.ConfirmLayer.createEmptyMovieClip("cbar", 3);
+      this.ConfirmPromptBar = cbar;
+
+      this.AddEditPrompt(cbar, this.ConfirmPrompts, MessageBox.SCAN_ENTER,
+                         this.Label("yes", "Yes"), "OnConfirmYes");
+      this.AddEditPrompt(cbar, this.ConfirmPrompts, MessageBox.SCAN_TAB,
+                         this.Label("no", "No"), "OnConfirmNo");
+
+      // Laid out from the measured widths, the way LayoutPrompts does it.
+      var ctotal = 0;
+      var ci = 0;
+      while(ci < this.ConfirmPrompts.length)
+      {
+         ctotal = ctotal + this.ConfirmPrompts[ci]._width + MessageBox.CONFIRM_GAP;
+         ci = ci + 1;
+      }
+      ctotal = ctotal - MessageBox.CONFIRM_GAP;
+
+      var cx = -ctotal / 2;
+      ci = 0;
+      while(ci < this.ConfirmPrompts.length)
+      {
+         this.ConfirmPrompts[ci]._x = cx;
+         cx = cx + this.ConfirmPrompts[ci]._width + MessageBox.CONFIRM_GAP;
+         ci = ci + 1;
+      }
+
+      cbar._y = h / 2 - 46;
+
+      gfx.io.GameDelegate.call("PlaySound", ["UIMenuFocus"]);
+   }
+
+   function OnConfirmYes()
+   {
+      this.CloseDeleteConfirm();
+      this.DeleteNote();
+   }
+
+   function OnConfirmNo()
+   {
+      this.CloseDeleteConfirm();
+      gfx.io.GameDelegate.call("PlaySound", ["UIMenuCancel"]);
+   }
+
+   function CloseDeleteConfirm()
+   {
+      if(!this.Confirming)
+      {
+         return;
+      }
+
+      this.Confirming = false;
+
+      if(this.ConfirmLayer != undefined)
+      {
+         this.ConfirmLayer.removeMovieClip();
+         this.ConfirmLayer = undefined;
+      }
+      this.ConfirmPromptBar = undefined;
+      this.ConfirmPrompts = undefined;
+
+      // Focus back to the field that had it, so answering No resumes typing
+      // where the player left off.
+      this.FocusEditField(this.EditField);
+   }
+
+   // The editor's prompt bar: save, switch field, delete, cancel.
+   //
+   // Built the same way the month prompts are -- ButtonArt icon plus caption,
+   // clickable, laid out from MEASURED widths -- so the two bars look and
+   // behave alike and a player learns one thing, not two.
+   //
+   // Icons come from the live bindings, so a rebind in the INI moves the key
+   // and its picture together.
+   function BuildEditPrompts(aiY)
+   {
+      this.EditPrompts = new Array();
+
+      var bar = this.EditLayer.createEmptyMovieClip("ebar", 7);
+      this.EditPromptBar = bar;
+
+      this.AddEditPrompt(bar, this.EditPrompts, this.NoteSaveScan,
+                         this.Label("noteSave", "Save"), "OnPromptSave");
+      this.AddEditPrompt(bar, this.EditPrompts, this.NoteSwitchScan,
+                         this.Label("noteSwitch", "Switch field"), "OnPromptSwitch");
+      this.AddEditPrompt(bar, this.EditPrompts, this.NoteDeleteScan,
+                         this.Label("noteDelete", "Delete"), "OnPromptDelete",
+                         this.NoteDeleteCtrl);
+      this.AddEditPrompt(bar, this.EditPrompts, this.NoteCancelScan,
+                         this.Label("noteCancel", "Cancel"), "OnPromptCancel");
+
+      // Centred as a row, from the widths the icons actually came out at.
+      var total = 0;
+      var i = 0;
+      while(i < this.EditPrompts.length)
+      {
+         total = total + this.EditPrompts[i]._width + MessageBox.EDIT_PROMPT_GAP;
+         i = i + 1;
+      }
+      total = total - MessageBox.EDIT_PROMPT_GAP;
+
+      var x = -total / 2;
+      i = 0;
+      while(i < this.EditPrompts.length)
+      {
+         this.EditPrompts[i]._x = x;
+         x = x + this.EditPrompts[i]._width + MessageBox.EDIT_PROMPT_GAP;
+         i = i + 1;
+      }
+
+      bar._y = aiY;
+   }
+
+   // One editor prompt. abCtrl prefixes the caption with CTRL+ for a command
+   // that needs the modifier, so the icon does not have to lie about it.
+   function AddEditPrompt(aBar, aList, aiScanCode, asLabel, asHandler, abCtrl)
+   {
+      var i = aList.length;
+      var holder = aBar.createEmptyMovieClip("ep" + i, i);
+
+      var icon = holder.attachMovie("ButtonArt", "icon", 1);
+      icon.gotoAndStop(aiScanCode);
+
+      var caption = abCtrl ? "CTRL+" + asLabel : asLabel;
+
+      var label = holder.createTextField(
+         "cap", 2, icon._width + MessageBox.PROMPT_ICON_GAP, 0, 200, 26);
+      label.selectable = false;
+      label.html = true;
+      label.noTranslate = true;
+      label.autoSize = "left";
+      label.htmlText = this.Markup(caption, MessageBox.FONT_SIZE_HINT, false);
+
+      label._y = (icon._height - label._height) / 2;
+
+      holder.Owner = this;
+      holder.Handler = asHandler;
+
+      // MUST refuse focus.
+      //
+      // A clip with an onRelease is a button in AS2, and a button takes focus
+      // when clicked -- which would pull focus OUT of the text field and stop
+      // the player typing. The month prompts refuse focus for the same reason
+      // (there it killed the keyboard entirely); here it would also silently
+      // end text entry.
+      holder.focusEnabled = false;
+      holder.tabEnabled = false;
+
+      // Width captured before the fill is drawn, since the fill becomes part
+      // of the clip and would otherwise feed back into the measurement.
+      var hitW = holder._width;
+
+      holder.beginFill(0x000000, 0);
+      holder.moveTo(0, 0);
+      holder.lineTo(hitW, 0);
+      holder.lineTo(hitW, MessageBox.PROMPT_HIT_H);
+      holder.lineTo(0, MessageBox.PROMPT_HIT_H);
+      holder.endFill();
+
+      // The same hover treatment as the month prompts at the top of the menu:
+      // dim on roll-over, restore on roll-out and on release. Kept identical
+      // deliberately, so every prompt in this menu reacts the same way.
+      holder.onRollOver = function()
+      {
+         this._alpha = 60;
+      };
+      holder.onRollOut = function()
+      {
+         this._alpha = 100;
+      };
+      holder.onRelease = function()
+      {
+         this._alpha = 100;
+         this.Owner[this.Handler]();
+      };
+      holder.useHandCursor = true;
+
+      aList.push(holder);
+      return holder;
+   }
+
+   function OnPromptAddNote() { this.BeginEdit(this.PopupDay); }
+
+   function OnPromptSave() { this.EndEdit(true); }
+   function OnPromptCancel() { this.EndEdit(false); }
+   function OnPromptDelete() { this.OpenDeleteConfirm(); }
+
+   function OnPromptSwitch()
+   {
+      this.FocusEditField(this.EditField == 0 ? 1 : 0);
+   }
+
+   // A printable name for a scan code, for the hint line.
+   //
+   // Only the keys the editor can plausibly be bound to are named; anything
+   // else falls back to the number, which is still enough for a player who
+   // rebound it to recognise what they set.
+   static function ScanName(aiScan)
+   {
+      if(MessageBox.ScanNames == undefined)
+      {
+         MessageBox.ScanNames = new Object();
+         MessageBox.ScanNames[1] = "ESC";
+         MessageBox.ScanNames[14] = "BACKSPACE";
+         MessageBox.ScanNames[15] = "TAB";
+         MessageBox.ScanNames[28] = "ENTER";
+         MessageBox.ScanNames[57] = "SPACE";
+         MessageBox.ScanNames[59] = "F1";
+         MessageBox.ScanNames[60] = "F2";
+         MessageBox.ScanNames[61] = "F3";
+         MessageBox.ScanNames[62] = "F4";
+         MessageBox.ScanNames[211] = "DELETE";
+
+         // Letters, so a rebind to any of them reads correctly.
+         var letters = "QWERTYUIOP";
+         var i = 0;
+         while(i < letters.length)
+         {
+            MessageBox.ScanNames[16 + i] = letters.charAt(i);
+            i = i + 1;
+         }
+         letters = "ASDFGHJKL";
+         i = 0;
+         while(i < letters.length)
+         {
+            MessageBox.ScanNames[30 + i] = letters.charAt(i);
+            i = i + 1;
+         }
+         letters = "ZXCVBNM";
+         i = 0;
+         while(i < letters.length)
+         {
+            MessageBox.ScanNames[44 + i] = letters.charAt(i);
+            i = i + 1;
+         }
+      }
+
+      var name = MessageBox.ScanNames[aiScan];
+      return name != undefined ? name : String(aiScan);
+   }
+
+   function MakeEditLabel(asName, aiDepth, aiX, aiY, asText)
+   {
+      var f = this.EditLayer.createTextField(asName, aiDepth, aiX, aiY, 200, 20);
+      f.selectable = false;
+      f.html = true;
+      f.noTranslate = true;
+      f.htmlText = this.Markup(asText, MessageBox.FONT_SIZE_HINT, false);
+      return f;
+   }
+
+   // An editable field.
+   //
+   // The font is set with a TextFormat rather than inline markup, because an
+   // input field's text is PLAIN: what the player types replaces the contents,
+   // so an HTML font tag would either be typed over or shown literally. The
+   // embedded font is what makes setTextFormat enough here -- see FONT.
+   function MakeEditField(asName, aiDepth, aiX, aiY, aiW, aiH, asValue)
+   {
+      var f = this.EditLayer.createTextField(asName, aiDepth, aiX, aiY, aiW, aiH);
+      f.type = "input";
+      f.border = true;
+      f.borderColor = MessageBox.FRAME_LINE_COLOR;
+      f.background = true;
+      f.backgroundColor = 0x101010;
+      f.selectable = true;
+      f.html = false;
+      f.noTranslate = true;
+      f.maxChars = MessageBox.NOTE_MAX_CHARS;
+
+      // An input TextField must be able to hold focus for a click to place the
+      // caret. tabEnabled is off so Tab stays OURS -- the editor moves between
+      // the two fields itself, and Flash's own tab order would fight it.
+      f.focusEnabled = true;
+      f.tabEnabled = false;
+
+      var fmt = new TextFormat();
+      fmt.font = MessageBox.FONT;
+      fmt.size = MessageBox.FONT_SIZE_SMALL;
+      fmt.color = 0xFFFFFF;
+      f.setNewTextFormat(fmt);
+
+      f.text = asValue;
+      f.setTextFormat(fmt);
+
+      // Clicking a field must also tell the editor which field is live.
+      //
+      // Flash moves the caret on its own, but EditField would go stale -- Tab
+      // would then jump from the wrong field, and the border highlight would
+      // point at the other box. onSetFocus fires for the mouse and for
+      // Selection.setFocus alike, so the two paths cannot diverge.
+      f.Owner = this;
+      f.FieldIndex = asName == "fdesc" ? 1 : 0;
+      f.onSetFocus = function()
+      {
+         this.Owner.OnEditFieldFocused(this.FieldIndex);
+      };
+
+      return f;
+   }
+
+   // A field took focus, from a click or from FocusEditField.
+   //
+   // Only the bookkeeping and the highlight -- deliberately NOT setFocus,
+   // which would recurse straight back into this handler.
+   function OnEditFieldFocused(aiWhich)
+   {
+      this.EditField = aiWhich;
+      this.RefreshFieldHighlight();
+   }
+
+   // The border colour that shows which field has the keyboard.
+   function RefreshFieldHighlight()
+   {
+      if(this.EditName == undefined || this.EditDesc == undefined)
+      {
+         return;
+      }
+
+      this.EditName.borderColor = this.EditField == 0 ? MessageBox.SELECTION_COLOR
+                                                      : MessageBox.FRAME_LINE_COLOR;
+      this.EditDesc.borderColor = this.EditField == 1 ? MessageBox.SELECTION_COLOR
+                                                      : MessageBox.FRAME_LINE_COLOR;
+   }
+
+   // Stop the day cells taking focus away from the editor.
+   //
+   // The cells are gfx.controls.Button instances, and a Button grabs focus on
+   // navigation input. Now that handleInput correctly returns false while
+   // editing (so characters can reach the field), those keys also reach the
+   // buttons -- and the log showed focus jumping from edit.fname to
+   // Cells.day12 after a few keystrokes, at which point every further
+   // character went to a button instead of the text field.
+   //
+   // disableFocus is gfx.controls.Button's own opt-out, so this uses the
+   // component's supported mechanism rather than fighting it.
+   function SetCellsFocusable(abFocusable)
+   {
+      var i = 0;
+      while(i < this.Cells.length)
+      {
+         if(this.Cells[i] != undefined)
+         {
+            this.Cells[i].disableFocus = !abFocusable;
+            this.Cells[i].focusEnabled = abFocusable;
+            this.Cells[i].tabEnabled = abFocusable;
+         }
+         i = i + 1;
+      }
+   }
+
+   function FocusEditField(aiWhich)
+   {
+      this.EditField = aiWhich;
+
+      var field = aiWhich == 0 ? this.EditName : this.EditDesc;
+
+      // Selection.setFocus ONLY.
+      //
+      // Do NOT also call gfx.managers.FocusHandler.instance.setFocus(field, 0).
+      // That writes currentFocusLookup, which is what getPathToFocus walks, and
+      // pointing it at a bare TextField -- which has no handleInput -- breaks
+      // dispatch to this menu entirely. SkyUI's search widget, the reference
+      // implementation for a Scaleform text field, never calls it either.
+      // Adding it is what put "focus=none" in the log.
+      Selection.setFocus(field);
+
+      // Caret to the end, so typing continues an existing note rather than
+      // overwriting from the start.
+      Selection.setSelection(field.text.length, field.text.length);
+
+      // Show which field has the keyboard. The border is the only cue -- an
+      // input field's own caret is easy to miss at this size.
+      this.RefreshFieldHighlight();
+   }
+
+   // The single exit. abSave decides whether the text is kept.
+   //
+   // Everything that stops editing comes through here, because this is where
+   // AllowTextInput is turned back off -- and missing that once leaves the
+   // player unable to move long after the menu is gone.
+   function EndEdit(abSave)
+   {
+      if(!this.Editing)
+      {
+         return;
+      }
+
+      var name = this.EditName.text;
+      var desc = this.EditDesc.text;
+      var day = this.EditDay;
+
+      // Cleared BEFORE the round trip to C++. SaveNote re-pushes the month,
+      // which rebuilds the grid and can close this popup: with Editing still
+      // true, CloseDayPopup would re-enter EndEdit.
+      this.Editing = false;
+      this.EditDay = undefined;
+
+      // The confirm panel is a child of EditLayer and dies with it, but the
+      // FLAG is not -- and a stale Confirming would swallow every key in
+      // handleInput with no panel on screen to explain why.
+      this.Confirming = false;
+      this.ConfirmLayer = undefined;
+
+      gfx.io.GameDelegate.call("EndTextInput", []);
+      if(skse != undefined)
+      {
+         skse.AllowTextInput(false);
+      }
+
+      if(this.EditLayer != undefined)
+      {
+         this.EditLayer.removeMovieClip();
+         this.EditLayer = undefined;
+      }
+      this.EditName = undefined;
+      this.EditDesc = undefined;
+
+      // The grid takes focus again now the editor is gone.
+      this.SetCellsFocusable(true);
+
+      // Focus back inside the menu, never null -- an empty focus path stops
+      // handleInput being dispatched at all and kills every key.
+      //
+      // Restored the way SearchWidget.endInput does it: focusEnabled is forced
+      // on for the setFocus call and then put back, because a component that
+      // is not focusable silently refuses focus and would leave the path
+      // empty.
+      var prev = this.PreviousFocus;
+      this.PreviousFocus = undefined;
+
+      // `prev` is usually a day cell, and saving a note re-pushes the month --
+      // which destroys and rebuilds every cell. Focusing a clip that is about
+      // to be removed leaves the focus path dangling, so its continued
+      // existence is checked rather than assumed. (_parent goes undefined on a
+      // removed MovieClip, which is the cheap test for it.)
+      if(prev != undefined && prev._parent != undefined)
+      {
+         var wasEnabled = prev.focusEnabled;
+         prev.focusEnabled = true;
+         Selection.setFocus(prev, 0);
+         prev.focusEnabled = wasEnabled;
+      }
+      else
+      {
+         Selection.setFocus(this);
+      }
+
+      if(abSave && day != undefined)
+      {
+         gfx.io.GameDelegate.call(
+            "SaveNote", [this.Data.year, this.Data.month, day.day, name, desc]);
+         gfx.io.GameDelegate.call("PlaySound", ["UIMenuOK"]);
+      }
+      else
+      {
+         gfx.io.GameDelegate.call("PlaySound", ["UIMenuCancel"]);
+      }
+   }
+
+   // The player's own entry on a day, or undefined. Keyed on isNote, which
+   // C++ sets -- the kind string alone is not enough, since authored JSON may
+   // legitimately use "note" too.
+   function FindNote(aDay)
+   {
+      if(aDay == undefined || aDay.events == undefined)
+      {
+         return undefined;
+      }
+      var i = 0;
+      while(i < aDay.events.length)
+      {
+         if(aDay.events[i].isNote)
+         {
+            return aDay.events[i];
+         }
+         i = i + 1;
+      }
+      return undefined;
    }
 
       // ---- layout --------------------------------------------------------
@@ -1298,8 +2858,53 @@ class MessageBox extends MovieClip
    //
    // Everything is laid out around (0,0) because MessageMenu is placed at
    // (640,360) on a 1280x720 stage -- the origin is already screen centre.
+   // Choose the tallest CELL_H whose panel still fits on screen.
+   //
+   // Solved rather than guessed, so that changing HEADER_H, FOOTER_H, MARGIN,
+   // ROWS or the preferred height can never push the menu off-screen again --
+   // the fixed furniture is subtracted from the budget and the rows divide
+   // what is left.
+   //
+   // Uses Stage.height when it is available and sane, falling back to the
+   // authored 720. Skyrim scales the movie rather than resizing the stage, so
+   // in practice this is 720 everywhere; the read is here so an unusual host
+   // (or a future menu that is not scaled) cannot silently clip.
+   function FitCellHeight()
+   {
+      var avail = MessageBox.STAGE_H;
+      if(Stage.height > 100)
+      {
+         avail = Stage.height;
+      }
+      avail = avail - MessageBox.SCREEN_PAD * 2;
+
+      var fixed = MessageBox.HEADER_H + MessageBox.FOOTER_H
+                + MessageBox.MARGIN * 2
+                + (MessageBox.ROWS - 1) * MessageBox.CELL_GAP;
+
+      var perRow = Math.floor((avail - fixed) / MessageBox.ROWS);
+
+      if(perRow > MessageBox.CELL_H_PREFERRED)
+      {
+         perRow = MessageBox.CELL_H_PREFERRED;
+      }
+
+      // A floor, deliberately. If the furniture ever grows so large that even
+      // the minimum does not fit, letting the cells collapse to nothing would
+      // be worse than overflowing -- and an unreadable grid hides the cause.
+      if(perRow < MessageBox.CELL_H_MIN)
+      {
+         perRow = MessageBox.CELL_H_MIN;
+      }
+
+      MessageBox.CELL_H = perRow;
+   }
+
    function ResetDimensions()
    {
+      // Before anything is measured: every dimension below depends on it.
+      this.FitCellHeight();
+
       var gridW = MessageBox.COLS * MessageBox.CELL_W
                 + (MessageBox.COLS - 1) * MessageBox.CELL_GAP;
       var gridH = MessageBox.ROWS * MessageBox.CELL_H
@@ -1344,6 +2949,12 @@ class MessageBox extends MovieClip
       // centre, which BuildGrid already compensates for on both axes.
       this.CellContainer._x = 0;
       this.CellContainer._y = top + MessageBox.HEADER_H;
+
+      // The frames are placed with the same cell centres, so the container
+      // must sit exactly where the cell container does or every box would be
+      // offset from the button it belongs to.
+      this.FrameContainer._x = this.CellContainer._x;
+      this.FrameContainer._y = this.CellContainer._y;
 
       var gridBottom = top + MessageBox.HEADER_H + gridH;
 

@@ -9,10 +9,36 @@ if(DEFINED ENV{SKYRIM_FOLDER} AND IS_DIRECTORY "$ENV{SKYRIM_FOLDER}/Data")
 endif()
 
 if(DEFINED ENV{SKYRIM_MODS_FOLDER} AND IS_DIRECTORY "$ENV{SKYRIM_MODS_FOLDER}")
-    set(OUTPUT_FOLDER "$ENV{SKYRIM_MODS_FOLDER}/${PROJECT_NAME}")
+    # The mod's folder name defaults to the project name, but a modlist may
+    # install it under another -- Winds of the North uses the Wabbajack
+    # "[NoDelete] CalendarUI". Deploying to a guessed name there would create a
+    # folder MO2 does not know about: the build reports success while the game
+    # goes on loading the old .dll.
+    set(MOD_FOLDER_NAME "${PROJECT_NAME}")
+    if(DEFINED ENV{CALENDARUI_MOD_FOLDER})
+        set(MOD_FOLDER_NAME "$ENV{CALENDARUI_MOD_FOLDER}")
+    endif()
+    set(OUTPUT_FOLDER "$ENV{SKYRIM_MODS_FOLDER}/${MOD_FOLDER_NAME}")
 endif()
 
-find_package(CommonLibSSE CONFIG REQUIRED)
+# CommonLibSSE-NG is built from source (alandtse fork) rather than pulled from
+# the colorglass vcpkg registry, which pins 3.7.0.
+#
+# 3.7.0 classifies the runtime with an exact minor-version match (4=VR, 6=AE,
+# else SE). Skyrim 1.7 bumped the *minor* version, so 1.7.x read as SE and the
+# address-library loader looked for version-1-7-104-0.bin (format 1) instead of
+# versionlib-1-7-104-0.bin (format 5). That throws before SKSEPlugin_Load runs,
+# so the game died with no log at all.
+#
+# The alandtse fork uses a floor (minor >= 6 = AE), which covers 1.6 AND 1.7
+# from a single binary -- verified on 1.6.1170 and 1.7.104 with the same .dll.
+set(BUILD_TESTS OFF CACHE BOOL "Disable CommonLibSSE unit tests" FORCE)
+set(ENABLE_SKYRIM_VR OFF CACHE BOOL "CalendarUI does not target VR" FORCE)
+add_subdirectory(lib/commonlibsse-ng CommonLibSSE EXCLUDE_FROM_ALL)
+
+# The subdirectory only includes this helper on its prebuilt path; on a source
+# build add_commonlibsse_plugin() would otherwise be undefined here.
+include("${CMAKE_CURRENT_SOURCE_DIR}/lib/commonlibsse-ng/cmake/CommonLibSSE.cmake")
 find_package(nlohmann_json CONFIG REQUIRED)
 
 add_commonlibsse_plugin(${PROJECT_NAME} MINIMUM_SKSE_VERSION 2.0.17 SOURCES
@@ -23,6 +49,8 @@ add_commonlibsse_plugin(${PROJECT_NAME} MINIMUM_SKSE_VERSION 2.0.17 SOURCES
     src/Events.cpp
     src/InputHandler.cpp
     src/CalendarMenu.cpp
+    src/Notes.cpp
+    src/Moons.cpp
 )
 
 target_compile_features(${PROJECT_NAME} PRIVATE cxx_std_23)

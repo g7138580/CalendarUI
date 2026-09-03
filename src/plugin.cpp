@@ -11,6 +11,8 @@
 #include "GameDate.h"
 #include "InputHandler.h"
 #include "Localization.h"
+#include "Moons.h"
+#include "Notes.h"
 #include "Settings.h"
 
 namespace {
@@ -81,6 +83,10 @@ namespace {
                 // than our built-in fallbacks.
                 GameDate::RefreshNames();
 
+                // Same reasoning for the moon phase names, which are read
+                // from the translation file Localization::Load just refreshed.
+                Moons::RefreshNames();
+
                 Events::Load();
 
                 // Log what the names actually resolved to.
@@ -117,6 +123,11 @@ namespace {
             case SKSE::MessagingInterface::kNewGame:
                 // Never leave the menu up across a load.
                 CalendarMenu::Close();
+
+                // Give the cursor back if an earlier build took it away. The
+                // flag lives in the save, so this has to run per load rather
+                // than once at startup.
+                CalendarMenu::RepairMenuControls();
                 break;
 
             default:
@@ -134,6 +145,14 @@ extern "C" DLLEXPORT bool SKSEPlugin_Load(const SKSE::LoadInterface* a_skse) {
     SKSE::Init(a_skse);
 
     Settings::Load();
+
+    // At load, NOT at kDataLoaded.
+    //
+    // SKSE dispatches the load callback for a save that was already being
+    // loaded when the game started (a save picked from the main menu), so a
+    // handler registered later would miss it and the player's notes would
+    // silently be absent until the next load.
+    Notes::Register();
 
     if (auto* messaging = SKSE::GetMessagingInterface()) {
         messaging->RegisterListener(OnMessage);

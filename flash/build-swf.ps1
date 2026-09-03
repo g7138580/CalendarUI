@@ -14,15 +14,20 @@ param(
     [switch]$Deploy
 )
 
-$ErrorActionPreference = 'Stop'
+# Continue, not Stop.
+#
+# FFDec writes ordinary progress and warnings to stderr, and PowerShell
+# surfaces native-command stderr as a NativeCommandError -- under 'Stop' that
+# aborts a build that is actually succeeding. It first bit when the class grew
+# past FFDec's SI16 header threshold and it emitted a purely informational
+# "This should not have any negative impact" warning.
+#
+# Real failures are still caught: every step checks $LASTEXITCODE, and the
+# verification pass at the end re-reads the built SWF.
+$ErrorActionPreference = 'Continue'
 
 $here   = $PSScriptRoot
-# FFDec's CLI. Set FFDEC_CLI, or put ffdec-cli.exe on PATH.
-$ffdec = if ($env:FFDEC_CLI) { $env:FFDEC_CLI }
-         elseif (Get-Command 'ffdec-cli.exe' -ErrorAction SilentlyContinue) {
-             (Get-Command 'ffdec-cli.exe').Source
-         }
-         else { 'ffdec-cli.exe' }
+$ffdec  = 'e:\Skyrim Modlists\Tools\Flash Decompiler\ffdec-cli.exe'
 $base   = Join-Path $here 'base-messagebox.swf'
 $source = Join-Path $here 'src\CalendarMenu.as'
 $out    = Join-Path $here 'CalendarUI.swf'
@@ -202,13 +207,31 @@ if ($Deploy) {
     # DLL. Without this the game keeps loading whatever .swf was there last,
     # which is indistinguishable in game from the new one not working -- an
     # entire test cycle was spent on a stale movie once already.
-    $mods = $env:SKYRIM_MODS_FOLDER
-    $target = if ($mods) { Join-Path $mods 'CalendarUI\Interface' } else { $null }
-    if ($target -and (Test-Path (Split-Path $target -Parent))) {
+    $mods = if ($env:SKYRIM_MODS_FOLDER) { $env:SKYRIM_MODS_FOLDER }
+            else { 'e:\Skyrim Modlists\Winds of the North\mods' }
+
+    # The mod's folder name is NOT always "CalendarUI". Winds of the North
+    # installs it as "[NoDelete] CalendarUI" -- the Wabbajack prefix marking a
+    # folder the modlist installer must not remove. Deploying to a guessed
+    # "CalendarUI" there would silently CREATE a second, empty-but-for-the-swf
+    # mod that MO2 has never heard of: the build reports success, the game
+    # keeps loading the old movie from the real folder, and nothing looks
+    # wrong. So the existing folder is found rather than assumed, and a miss
+    # is a warning instead of a new directory.
+    $modDir = $null
+    foreach ($name in @($env:CALENDARUI_MOD_FOLDER, 'CalendarUI', '[NoDelete] CalendarUI')) {
+        if (-not $name) { continue }
+        $candidate = Join-Path $mods $name
+        if (Test-Path -LiteralPath $candidate) { $modDir = $candidate; break }
+    }
+
+    if ($modDir) {
+        $target = Join-Path $modDir 'Interface'
         New-Item -ItemType Directory -Force -Path $target | Out-Null
         Copy-Item $out (Join-Path $target 'CalendarUI.swf') -Force
         Write-Host "Deployed to $target" -ForegroundColor Green
     } else {
-        Write-Warning "Mods folder not found: $mods -- the .swf was NOT deployed to the game."
+        Write-Warning "No CalendarUI mod folder found under $mods -- the .swf was NOT deployed to the game."
+        Write-Warning "  Set CALENDARUI_MOD_FOLDER to the mod's folder name if it differs."
     }
 }

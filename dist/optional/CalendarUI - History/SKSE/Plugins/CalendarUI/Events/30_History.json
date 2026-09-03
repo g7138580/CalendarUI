@@ -1,0 +1,102 @@
+{
+  "_comment": [
+    "Historical events of the 4th Era that heavily impact Skyrim and Tamriel.",
+    "",
+    "These are logged as exact historical days rather than repeating holidays.",
+    "Install alongside 10_Vanilla.json and 20_Provinces.json for a complete calendar.",
+    "",
+    "Events without a strict canon calendar day have been assigned lore-friendly dates."
+  ],
+  "events": [
+    {
+      "id": "history.red_year",
+      "name": "The Red Year",
+      "month": "Sun's Dawn",
+      "day": 5,
+      "kind": "history",
+      "year": 5,
+      "description": "The cataclysmic eruption of Red Mountain destroys much of Vvardenfell. Thousands of Dunmer refugees flee into Skyrim, eventually establishing settlements like Windhelm's Gray Quarter."
+    },
+    {
+      "id": "history.return_of_the_moons",
+      "name": "Return of the Moons",
+      "month": "Sun's Height",
+      "day": 12,
+      "kind": "history",
+      "year": 100,
+      "description": "The moons Masser and Secunda return to the night sky after a terrifying two-year absence. The Thalmor take credit for ending the Void Nights, manipulating Elsweyr into joining the Dominion."
+    },
+    {
+      "id": "history.the_great_collapse",
+      "name": "The Great Collapse",
+      "month": "Evening Star",
+      "day": 20,
+      "kind": "history",
+      "year": 122,
+      "description": "Catastrophic year-long storms tear away the cliffs of the ancient capital, sending most of Winterhold crashing into the Sea of Ghosts. Only the College of Winterhold remains largely untouched."
+    },
+    {
+      "id": "history.the_ultimatum",
+      "name": "The Ultimatum",
+      "month": "Frostfall",
+      "day": 30,
+      "kind": "history",
+      "year": 171,
+      "description": "The Thalmor ambassador delivers the Aldmeri Dominion's extreme demands to Emperor Titus Mede II. The Emperor's refusal marks the official beginning of the Great War."
+    },
+    {
+      "id": "history.sack_of_the_imperial_city",
+      "name": "Sack of the Imperial City",
+      "month": "Second Seed",
+      "day": 12,
+      "kind": "history",
+      "year": 174,
+      "description": "The Aldmeri Dominion breaches the walls of the Imperial City, leading to widespread slaughter and forcing the Imperial army to retreat into Skyrim and Hammerfell."
+    },
+    {
+      "id": "history.battle_of_the_red_ring",
+      "name": "Battle of the Red Ring",
+      "month": "Rain's Hand",
+      "day": 30,
+      "kind": "history",
+      "year": 175,
+      "description": "The Imperial Army, heavily reinforced by Skyrim's legions, decimates the main Aldmeri force in Cyrodiil and retakes the capital. It is the Empire's greatest victory in the war."
+    },
+    {
+      "id": "history.white_gold_concordat",
+      "name": "The White-Gold Concordat",
+      "month": "Sun's Dusk",
+      "day": 15,
+      "kind": "history",
+      "year": 175,
+      "description": "The White-Gold Concordat is signed, officially ending the Great War. The treaty outlaws Talos worship across the Empire and disbands the Blades."
+    },
+    {
+      "id": "history.the_markarth_incident",
+      "name": "The Markarth Incident",
+      "month": "Last Seed",
+      "day": 5,
+      "kind": "history",
+      "year": 176,
+      "description": "Ulfric Stormcloak and his militia successfully reclaim Markarth from the Forsworn. The subsequent arrest of Ulfric over Talos worship plants the seeds of the rebellion."
+    },
+    {
+      "id": "history.death_of_torygg",
+      "name": "Death of High King Torygg",
+      "month": "Midyear",
+      "day": 3,
+      "kind": "history",
+      "year": 201,
+      "description": "Ulfric Stormcloak challenges and kills High King Torygg in Solitude using the Thu'um. The violent event shatters the province and plunges Skyrim into open civil war."
+    },
+    {
+      "id": "history.capture_of_ulfric",
+      "name": "Capture of Ulfric Stormcloak",
+      "month": "Last Seed",
+      "day": 15,
+      "kind": "history",
+      "year": 201,
+      "description": "Imperial forces under General Tullius ambush and capture Ulfric Stormcloak at Darkwater Crossing. The prisoners are bound for execution in Helgen, seemingly bringing an end to the rebellion."
+    }
+  ]
+}

@@ -16,7 +16,53 @@ namespace {
         }
 
         auto* controls = RE::ControlMap::GetSingleton();
-        if (!controls || !controls->IsMovementControlsEnabled()) {
+        if (!controls) {
+            return false;
+        }
+
+        // Deliberately NOT gated on IsMovementControlsEnabled().
+        //
+        // It was used as a proxy for "the player is in control", but it is a
+        // poor one: plenty of ordinary states disable movement, and crucially
+        // AllowTextInput does too. Writing a single note left it false and the
+        // hotkey silently dead for the rest of the session -- and re-enabling
+        // it from here was worse, because that is a plugin writing global
+        // control state it does not own (the same mistake that took the mouse
+        // cursor out of every menu).
+        //
+        // What actually needs to be true is checked directly instead.
+
+        // Not while ANY other menu owns the screen.
+        //
+        // The hotkey is an ordinary letter, so without this it fired from
+        // inside every menu that does not consume its keys: typing an "l" in
+        // the console opened the calendar mid-command, and the same went for
+        // any other menu the player could type in.
+        //
+        // GameIsPaused above only catches the pause menu. IsMenuOpen would
+        // need every menu named one by one. The game's own question is
+        // "is the player in menu mode", which is exactly this -- and it covers
+        // menus from other mods too, which a hardcoded list never could.
+        if (ui->IsMenuOpen(RE::Console::MENU_NAME)) {
+            return false;
+        }
+
+        auto* controlMap = RE::ControlMap::GetSingleton();
+        if (controlMap && controlMap->textEntryCount > 0) {
+            // Something, somewhere, is taking typed text -- the console, a
+            // rename prompt, another mod's search box. A letter belongs to it.
+            return false;
+        }
+
+        // Any menu that pauses the game is a menu the player is "in", so a
+        // world hotkey has no business firing. numPausesGame counts exactly
+        // those, which catches inventory, magic, map, journal, barter,
+        // containers and other mods' menus alike -- without naming any of them.
+        //
+        // The calendar itself pauses, so this is only consulted when it is NOT
+        // already open (the caller checks that first) -- otherwise the hotkey
+        // could never close it again.
+        if (ui->numPausesGame > 0) {
             return false;
         }
 
@@ -49,6 +95,17 @@ namespace {
                 const auto key = button->GetIDCode();
 
                 if (CalendarMenu::IsOpen()) {
+                    // Not while the player is typing a note.
+                    //
+                    // The hotkey is an ordinary letter (L by default), so
+                    // without this it would both type its character into the
+                    // field and close the menu out from under the editor in
+                    // the same keystroke. A sink cannot consume the event, so
+                    // the only fix is to not act on it.
+                    if (CalendarMenu::IsTextInputActive()) {
+                        continue;
+                    }
+
                     // Only the hotkey. Escape is left to the menu system,
                     // which closes the top menu the way it does for every
                     // vanilla menu.

@@ -7,9 +7,6 @@ namespace Settings {
     // Scan code of the key that opens the calendar. Default 0x26 = L.
     inline std::uint32_t hotkey = 0x26;
 
-    // Pause the game (freeze time) while the window is open.
-    inline bool pauseGame = true;
-
     // How much is written to CalendarUI.log.
     //
     // Default is "warn": a normal, working setup then writes almost nothing,
@@ -50,9 +47,69 @@ namespace Settings {
     inline std::uint32_t nextMonthKey = 0x13;  // R
     inline std::uint32_t todayKey = 0x14;      // T
 
+    // The note editor's keys, also DX scan codes.
+    //
+    // Sent to the movie alongside the month keys, for the same reason: a
+    // rebind has to move the binding and the on-screen hint together, and the
+    // .swf must not carry a hardcoded key it cannot explain.
+    //
+    // noteKey opens the editor from the day popup. N by default, deliberately
+    // not E -- see the month keys above.
+    //
+    // noteDeleteKey removes the note being edited, and IS rebindable: it is
+    // matched against the raw scan code, so any key works.
+    //
+    // F4 by default: a function key is never text, so it cannot be confused
+    // with typing into the note fields and needs no modifier.
+    inline std::uint32_t noteKey = 0x31;         // N
+    inline std::uint32_t noteDeleteKey = 0x3E;   // F4
+
+    // Save / cancel / switch-field are reported for the on-screen hint only.
+    //
+    // They are NOT rebindable in practice. The editor matches them on
+    // Scaleform's navEquivalent (ENTER / ESCAPE / TAB) rather than a scan
+    // code, because that is the only form that works for a gamepad as well as
+    // a keyboard -- and it is what SkyUI's own text field does. Changing these
+    // values moves the hint text without moving the binding, so they are left
+    // at the real keys.
+    inline std::uint32_t noteSaveKey = 0x1C;     // Enter
+    inline std::uint32_t noteCancelKey = 0x01;   // Escape
+    inline std::uint32_t noteSwitchKey = 0x0F;   // Tab
+
+    // Whether noteDeleteKey needs CTRL held as well.
+    //
+    // OFF by default now that the default is F4. Turn it on if you rebind
+    // delete to a plain letter, where the modifier is the only thing that
+    // separates the command from typing the character.
+    inline bool noteDeleteNeedsCtrl = false;
+
+    // --- Moons -----------------------------------------------------------
+    //
+    // Whether the grid marks the moon phases at all. On by default: it is the
+    // kind of thing a calendar is FOR, and it costs a corner of a cell.
+    inline bool showMoonPhases = true;
+
+    // The lunar cycle, in days, and how long one phase lasts.
+    //
+    // Vanilla is 24 days over eight phases -- three days each -- and those are
+    // the defaults. They are settings rather than constants because the moons
+    // are the one part of this calendar a mod is likely to have changed
+    // underneath us: Moons and Stars - Sky Overhaul, for instance, runs Masser
+    // on 24 days and Secunda on 20. There is no API to ask such a mod what it
+    // did, so the next best thing is letting the player tell us.
+    //
+    // The two are kept separate rather than deriving one from the other so an
+    // uneven cycle still works: the last phase is short instead of the count
+    // being wrong. See Moons::PhaseOf, which clamps for exactly that case.
+    inline int moonCycleDays = 24;
+    inline int moonDaysPerPhase = 3;
+
     [[nodiscard]] inline std::uint32_t PrevMonthKey() { return prevMonthKey; }
     [[nodiscard]] inline std::uint32_t NextMonthKey() { return nextMonthKey; }
     [[nodiscard]] inline std::uint32_t TodayKey() { return todayKey; }
+
+    [[nodiscard]] inline int MoonCycleDays() { return moonCycleDays; }
+    [[nodiscard]] inline int MoonDaysPerPhase() { return moonDaysPerPhase; }
 
     // Reads only LogLevel, so the log can be configured before anything has
     // had a chance to write to it. Load() reads everything else.

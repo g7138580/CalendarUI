@@ -106,9 +106,6 @@ namespace Settings {
             hotkey = static_cast<std::uint32_t>(wcstoul(keyBuffer, nullptr, 0));
         }
 
-        pauseGame = GetPrivateProfileIntW(L"General", L"PauseGame", pauseGame ? 1 : 0,
-                                          kIniPath) != 0;
-
         // Already applied to the logger in InitializeLog, which runs before
         // this. Stored here too so the value is visible to anything that asks
         // and so the line logged below reports what is actually in force.
@@ -117,6 +114,52 @@ namespace Settings {
         prevMonthKey = ReadScanCode(L"PrevMonthKey", prevMonthKey);
         nextMonthKey = ReadScanCode(L"NextMonthKey", nextMonthKey);
         todayKey = ReadScanCode(L"TodayKey", todayKey);
+
+        noteKey = ReadScanCode(L"NoteKey", noteKey);
+        noteSaveKey = ReadScanCode(L"NoteSaveKey", noteSaveKey);
+        noteCancelKey = ReadScanCode(L"NoteCancelKey", noteCancelKey);
+        noteSwitchKey = ReadScanCode(L"NoteSwitchKey", noteSwitchKey);
+        noteDeleteKey = ReadScanCode(L"NoteDeleteKey", noteDeleteKey);
+        noteDeleteNeedsCtrl =
+            GetPrivateProfileIntW(L"Controls", L"NoteDeleteNeedsCtrl",
+                                  noteDeleteNeedsCtrl ? 1 : 0, kIniPath) != 0;
+
+        // Moons.
+        showMoonPhases = GetPrivateProfileIntW(L"Moons", L"ShowMoonPhases",
+                                               showMoonPhases ? 1 : 0, kIniPath) != 0;
+
+        // Validated rather than trusted: both values divide in PhaseOf, so a
+        // zero would be a divide-by-zero on a code path that runs for every
+        // cell of every month. A negative cycle would send the modulo the
+        // wrong way. Clamping silently would hide the typo, so each is
+        // rejected back to its default with a line saying why.
+        const int cycle = static_cast<int>(
+            GetPrivateProfileIntW(L"Moons", L"CycleDays", moonCycleDays, kIniPath));
+        if (cycle > 0) {
+            moonCycleDays = cycle;
+        } else {
+            logger::warn("CycleDays must be at least 1 (got {}); keeping {}", cycle,
+                         moonCycleDays);
+        }
+
+        const int perPhase = static_cast<int>(
+            GetPrivateProfileIntW(L"Moons", L"DaysPerPhase", moonDaysPerPhase, kIniPath));
+        if (perPhase > 0) {
+            moonDaysPerPhase = perPhase;
+        } else {
+            logger::warn("DaysPerPhase must be at least 1 (got {}); keeping {}", perPhase,
+                         moonDaysPerPhase);
+        }
+
+        // A cycle shorter than one full set of phases means the moon never
+        // reaches the later ones -- it would jump from waxing straight back to
+        // full. Legal, and someone may want it, but it is far more likely to
+        // be a mistake than an intention.
+        if (moonCycleDays < moonDaysPerPhase * 8) {
+            logger::warn("CycleDays={} over DaysPerPhase={} covers only {} of 8 phases; "
+                         "the later phases will never be shown",
+                         moonCycleDays, moonDaysPerPhase, moonCycleDays / moonDaysPerPhase);
+        }
 
         // Seasons. Each is the month that season begins on.
         winterStart = ReadMonth(L"WinterStart", "WinterStart", winterStart);
@@ -138,10 +181,16 @@ namespace Settings {
             }
         }
 
-        logger::info("settings: hotkey=0x{:02X} pause={} log={}", hotkey, pauseGame,
+        logger::info("settings: hotkey=0x{:02X} log={}", hotkey,
                      static_cast<int>(logLevel));
         logger::info("settings: prev=0x{:02X} next=0x{:02X} today=0x{:02X}", prevMonthKey,
                      nextMonthKey, todayKey);
+        logger::info("settings: note=0x{:02X} save=0x{:02X} cancel=0x{:02X} switch=0x{:02X} "
+                     "delete=0x{:02X}{}",
+                     noteKey, noteSaveKey, noteCancelKey, noteSwitchKey, noteDeleteKey,
+                     noteDeleteNeedsCtrl ? " (+ctrl)" : "");
+        logger::info("settings: moons show={} cycle={}d perPhase={}d", showMoonPhases,
+                     moonCycleDays, moonDaysPerPhase);
         logger::info("settings: seasons winter={} spring={} summer={} autumn={}",
                      GameDate::kFallbackMonthNames[winterStart],
                      GameDate::kFallbackMonthNames[springStart],

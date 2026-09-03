@@ -7,6 +7,8 @@
 
 #include "Events.h"
 #include "Localization.h"
+#include "Moons.h"
+#include "Notes.h"
 #include "Settings.h"
 
 namespace {
@@ -58,6 +60,15 @@ namespace {
             }
         }
 
+        // The lunar cycle, read once for the whole month rather than per cell.
+        // See Moons::Cycle -- the anchor is several game reads, and it cannot
+        // change while one month is being pushed.
+        //
+        // Taken even when the moons are switched off: it is four reads, and
+        // hoisting the settings test into the loop instead would mean the
+        // disabled path still branched per cell.
+        const auto moonCycle = Moons::Cycle::Current();
+
         for (int day = 1; day <= daysInMonth; ++day) {
             RE::GFxValue cell;
             a_movie->CreateObject(std::addressof(cell));
@@ -69,6 +80,36 @@ namespace {
             cell.SetMember("isToday",
                            RE::GFxValue{ a_view.year == a_today.year &&
                                          a_view.month == a_today.month && day == a_today.day });
+
+            // The moon, on the days worth marking.
+            //
+            // Moons::IsMarked picks those: the day a phase BEGINS, for all
+            // eight phases -- nine to eleven days a month, one every three.
+            // Testing which phase a day falls in would mark every cell, since
+            // a phase lasts three days; only the day it changes is news.
+            //
+            // "moon" is left ABSENT on an unmarked day rather than sent as -1,
+            // so the movie tests for the member instead of for a sentinel and
+            // an older .swf paired with a newer DLL simply draws nothing.
+            if (Settings::showMoonPhases) {
+                const GameDate::Date cellDate{ a_view.year, a_view.month, day };
+                if (moonCycle.IsMarked(cellDate)) {
+                    const auto phase = moonCycle.PhaseOf(cellDate);
+                    cell.SetMember("moon",
+                                   RE::GFxValue{ static_cast<double>(static_cast<int>(phase)) });
+
+                    // The name travels with it for the detail line, so the
+                    // movie never has to map a phase number onto a word --
+                    // that mapping is translated, and translation lives here.
+                    //
+                    // Not copied into a_strings: PhaseName returns a
+                    // reference to a cache that outlives this push, so the
+                    // pointer GFxValue borrows stays good without a per-cell
+                    // string.
+                    cell.SetMember("moonName",
+                                   RE::GFxValue{ Moons::PhaseName(phase).c_str() });
+                }
+            }
 
             // The day's events, so a cell can be marked and given a tooltip
             // without a second round trip.
@@ -94,8 +135,38 @@ namespace {
                 entry.SetMember("description", RE::GFxValue{ a_strings.back().c_str() });
 
                 entry.SetMember("kind", RE::GFxValue{ Events::KindName(event->kind) });
+                entry.SetMember("isNote", RE::GFxValue{ false });
                 events.PushBack(entry);
             }
+
+            // The player's own note for this day, appended to the same array.
+            //
+            // Merged here rather than sent as a separate member so the movie
+            // has ONE list to draw per day: a note is just another entry that
+            // happens to be editable. "isNote" is what the editor keys off to
+            // know a day already has one -- the kind string is not enough,
+            // since an authored JSON event may legitimately use kNote too.
+            //
+            // Appended last so an authored holiday keeps the cell's first
+            // line, which is the one the grid shows when space is tight.
+            if (const auto* note = Notes::Find(a_view.year, a_view.month, day)) {
+                RE::GFxValue entry;
+                a_movie->CreateObject(std::addressof(entry));
+
+                // Stored verbatim, NOT run through Localization::Resolve. The
+                // player typed these: text starting with '$' is theirs and
+                // must not be looked up as a translation key.
+                a_strings.push_back(note->name);
+                entry.SetMember("name", RE::GFxValue{ a_strings.back().c_str() });
+
+                a_strings.push_back(note->description);
+                entry.SetMember("description", RE::GFxValue{ a_strings.back().c_str() });
+
+                entry.SetMember("kind", RE::GFxValue{ Events::KindName(Events::Kind::kNote) });
+                entry.SetMember("isNote", RE::GFxValue{ true });
+                events.PushBack(entry);
+            }
+
             cell.SetMember("events", events);
 
             a_out.PushBack(cell);
@@ -224,6 +295,45 @@ void CalendarMenu::Open() {
     if (auto* queue = RE::UIMessageQueue::GetSingleton()) {
         queue->AddMessage(MENU_NAME, RE::UI_MESSAGE_TYPE::kShow, nullptr);
     }
+}
+
+CalendarMenu::~CalendarMenu() {
+    // The menu is going away with an edit still open (closed mid-note, or
+    // hidden by something else), so the movie's EndEdit will never run and its
+    // AllowTextInput(true) would be stranded -- leaving the player unable to
+    // move with no menu on screen.
+    //
+    // This is the ONLY place the plugin touches the count, and only to undo
+    // what the movie can no longer undo itself.
+    if (textInputHeld) {
+        if (auto* controls = RE::ControlMap::GetSingleton()) {
+            controls->AllowTextInput(false);
+            logger::warn("menu closed mid-edit; released the text-input hold");
+        }
+    }
+    textInputHeld = false;
+}
+
+void CalendarMenu::RepairMenuControls() {
+    // Deliberately does nothing.
+    //
+    // This used to call ToggleControls(kMenu, true) at kPostLoadGame to undo
+    // global control state an earlier build had disabled. It crashed the game:
+    // an access violation inside the control map on an indexed lookup with a
+    // garbage (negative) index, every time, at the exact millisecond this
+    // function logged.
+    //
+    // kPostLoadGame is too early -- the game is still rebuilding its own input
+    // state, and writing control flags from underneath that walks structures
+    // which are not yet consistent.
+    //
+    // The lesson generalises past the timing: this plugin has now broken the
+    // player's game twice by writing global control state it does not own
+    // (once taking the mouse cursor out of every menu, once crashing on load).
+    // ControlMap::AllowTextInput is the ONLY control-state call this mod makes,
+    // it is refcounted for exactly this purpose, and it is enough.
+    //
+    // Kept as a no-op rather than deleted so the call site stays documented.
 }
 
 void CalendarMenu::Close() {
@@ -404,6 +514,23 @@ void CalendarMenu::PushMonth(int year, int month) {
         RE::FxDelegate::Invoke(uiMovie.get(), "setKeys", keyArgs);
     }
 
+    // The note editor's keys, sent separately rather than appended to setKeys.
+    //
+    // A second call keeps both argument lists short and positional-safe: adding
+    // five more slots to a nine-argument call means every index in the movie
+    // shifts, and a mismatched order there fails silently (the movie would bind
+    // whatever number landed in that position).
+    {
+        RE::FxResponseArgs<6> noteArgs;
+        noteArgs.Add(RE::GFxValue{ static_cast<double>(Settings::noteKey) });
+        noteArgs.Add(RE::GFxValue{ static_cast<double>(Settings::noteSaveKey) });
+        noteArgs.Add(RE::GFxValue{ static_cast<double>(Settings::noteCancelKey) });
+        noteArgs.Add(RE::GFxValue{ static_cast<double>(Settings::noteSwitchKey) });
+        noteArgs.Add(RE::GFxValue{ static_cast<double>(Settings::noteDeleteKey) });
+        noteArgs.Add(RE::GFxValue{ Settings::noteDeleteNeedsCtrl });
+        RE::FxDelegate::Invoke(uiMovie.get(), "setNoteKeys", noteArgs);
+    }
+
     // The next event, for the footer.
     int         daysAway = 0;
     const auto* next = Events::Next(today, std::addressof(daysAway));
@@ -457,6 +584,20 @@ RE::UI_MESSAGE_RESULTS CalendarMenu::ProcessMessage(RE::UIMessage& a_message) {
 }
 
 void CalendarMenu::AdvanceMovie(float a_interval, std::uint32_t a_currentTime) {
+    // A month re-push requested from inside an ActionScript callback happens
+    // HERE, on the next frame, rather than during the callback itself.
+    //
+    // PushMonth invokes setCalendarData, which makes the movie rebuild the
+    // whole grid -- destroying and recreating every cell, and tearing down the
+    // day popup. Doing that from within a GFx callback re-enters ActionScript
+    // while the calling function is still on the stack: EndEdit was mid-way
+    // through, having just focused a cell that PushMonth then deleted. That is
+    // the crash after saving or clearing a note.
+    if (refreshPending) {
+        refreshPending = false;
+        PushMonth(view.year, view.month);
+    }
+
     RE::IMenu::AdvanceMovie(a_interval, a_currentTime);
 }
 
@@ -472,6 +613,124 @@ void CalendarMenu::Accept(RE::FxDelegateHandler::CallbackProcessor* a_processor)
     // menu does. Playing them is what makes navigation *feel* like the game
     // rather than like an overlay.
     a_processor->Process("PlaySound", OnPlaySound);
+
+    a_processor->Process("SaveNote", OnSaveNote);
+    a_processor->Process("DeleteNote", OnDeleteNote);
+
+    a_processor->Process("BeginTextInput", OnBeginTextInput);
+    a_processor->Process("EndTextInput", OnEndTextInput);
+
+    // A diagnostic channel for the movie. Not used by the menu itself -- it is
+    // here so ActionScript problems can be seen in the log rather than
+    // guessed at, since a .swf has nowhere else to report.
+    a_processor->Process("Log", OnLog);
+}
+
+void CalendarMenu::OnLog(const RE::FxDelegateArgs& a_args) {
+    if (a_args.GetArgCount() < 1) {
+        return;
+    }
+    const auto* text = a_args[0].GetString();
+    if (text) {
+        logger::info("[as2] {}", text);
+    }
+}
+
+void CalendarMenu::SetTextInput(bool a_allow) {
+    // Guarded against repeats. AllowTextInput keeps a count, so an unmatched
+    // call leaves the game in text mode for good -- the player closes the
+    // calendar and their movement keys are dead.
+    if (a_allow == textInputHeld) {
+        return;
+    }
+
+    auto* controls = RE::ControlMap::GetSingleton();
+    if (!controls) {
+        logger::error("no control map; text input cannot be {}",
+                      a_allow ? "enabled" : "disabled");
+        return;
+    }
+
+    // AllowTextInput is NOT called here.
+    //
+    // The movie already calls skse.AllowTextInput itself, the way SkyUI's
+    // search box does. Calling it here as well raised the count TWICE for one
+    // edit while only ever lowering it once, so it never returned to zero:
+    // the game stayed in text mode after the calendar closed and the player
+    // could not move.
+    //
+    // ONE owner. The movie owns the refcount because that is where the field's
+    // lifetime is known; this flag only records that an edit is in progress,
+    // so InputHandler can skip its own hotkey.
+
+    // ToggleControls(kMenu, ...) is deliberately NOT called here.
+    //
+    // It looked like the way to stop menu hotkeys firing mid-word, but the
+    // flags it writes are GLOBAL GAME STATE, not something scoped to this
+    // menu: disabling kMenu took the mouse cursor out in every menu in the
+    // game, and it stayed out after the calendar closed. It is not a refcount
+    // either, so restoring it by writing true back would clobber whatever
+    // another mod had set.
+    //
+    // SkyUI's search box -- the reference implementation this editor follows
+    // -- calls AllowTextInput and nothing else. If a stray menu hotkey does
+    // turn out to fire while typing, the fix belongs in that specific hotkey's
+    // own handler (as InputHandler already does for ours), not in a global
+    // control-state flag.
+
+    textInputHeld = a_allow;
+
+    logger::debug("text input {}", a_allow ? "enabled" : "disabled");
+}
+
+void CalendarMenu::OnBeginTextInput(const RE::FxDelegateArgs&) { SetTextInput(true); }
+
+void CalendarMenu::OnEndTextInput(const RE::FxDelegateArgs&) { SetTextInput(false); }
+
+void CalendarMenu::OnSaveNote(const RE::FxDelegateArgs& a_args) {
+    if (a_args.GetArgCount() < 5) {
+        logger::warn("SaveNote called with {} args, expected 5", a_args.GetArgCount());
+        return;
+    }
+
+    auto* menu = static_cast<CalendarMenu*>(a_args.GetHandler());
+    if (!menu) {
+        return;
+    }
+
+    const int year = static_cast<int>(a_args[0].GetNumber());
+    const int month = static_cast<int>(a_args[1].GetNumber());
+    const int day = static_cast<int>(a_args[2].GetNumber());
+
+    // GetString returns nullptr for a non-string arg, and ActionScript sends
+    // an empty field as "" rather than omitting it -- so both are normalised
+    // to an empty std::string instead of being trusted.
+    const auto* rawName = a_args[3].GetString();
+    const auto* rawDesc = a_args[4].GetString();
+
+    Notes::Set(year, month, day, rawName ? rawName : "", rawDesc ? rawDesc : "");
+
+    // Deferred to the next frame -- see AdvanceMovie. Re-pushing from inside
+    // this callback rebuilds the grid underneath the ActionScript that is
+    // still running and crashes the game.
+    menu->refreshPending = true;
+}
+
+void CalendarMenu::OnDeleteNote(const RE::FxDelegateArgs& a_args) {
+    if (a_args.GetArgCount() < 3) {
+        return;
+    }
+
+    auto* menu = static_cast<CalendarMenu*>(a_args.GetHandler());
+    if (!menu) {
+        return;
+    }
+
+    Notes::Remove(static_cast<int>(a_args[0].GetNumber()),
+                  static_cast<int>(a_args[1].GetNumber()),
+                  static_cast<int>(a_args[2].GetNumber()));
+
+    menu->refreshPending = true;
 }
 
 void CalendarMenu::OnRequestMonth(const RE::FxDelegateArgs& a_args) {

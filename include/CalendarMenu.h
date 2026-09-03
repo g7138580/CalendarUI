@@ -43,6 +43,14 @@ public:
 
     CalendarMenu();
 
+    // Releases the text-input hold if the menu is destroyed mid-edit.
+    //
+    // Closing the calendar with the note editor open (Esc twice quickly, or
+    // any other plugin hiding the menu) would otherwise never run the movie's
+    // EndTextInput, and the refcount would be left raised: the player's
+    // movement keys stay dead with no menu on screen and nothing to reopen.
+    ~CalendarMenu() override;
+
     // The factory the UI registry calls. Registered once at kDataLoaded.
     static RE::IMenu* Creator() { return new CalendarMenu(); }
     static void       Register();
@@ -86,7 +94,65 @@ private:
     static void OnClose(const RE::FxDelegateArgs& a_args);
     static void OnPlaySound(const RE::FxDelegateArgs& a_args);
 
+    // The player's own entries, written from the note editor in the movie.
+    //
+    // Both re-push the month afterwards rather than letting the movie patch
+    // its own copy of the data: the grid then redraws from the same path as
+    // every other change, so a note appears in its cell by exactly the
+    // mechanism a JSON event does and there is no second rendering path to
+    // keep in step.
+    static void OnSaveNote(const RE::FxDelegateArgs& a_args);
+    static void OnDeleteNote(const RE::FxDelegateArgs& a_args);
+
+    // Hands the keyboard to Flash for the note editor, and takes it back.
+    //
+    // This MUST be done here, in C++, via RE::ControlMap::AllowTextInput.
+    // ActionScript's fscommand("AllowTextInput", ...) does nothing in Skyrim:
+    // the game never routes that fscommand to the control map, so the movie
+    // asks and nothing happens -- the field takes focus, the caret blinks, and
+    // not one character arrives because the game is still consuming every key
+    // as gameplay input. That is precisely what "typing does nothing" looked
+    // like.
+    //
+    // AllowTextInput is a REFCOUNT, not a flag. Every true must be matched by
+    // exactly one false or the game stays in text mode after the menu closes
+    // and the player cannot move. textInputHeld tracks whether this menu is
+    // currently holding it, so a double-begin or a double-end cannot unbalance
+    // the count.
+    static void OnBeginTextInput(const RE::FxDelegateArgs& a_args);
+    static void OnEndTextInput(const RE::FxDelegateArgs& a_args);
+
+    static void SetTextInput(bool a_allow);
+
+    // Lets the movie write to the plugin's log. See OnLog.
+    static void OnLog(const RE::FxDelegateArgs& a_args);
+
+    // Released if the menu is torn down mid-edit -- closing the calendar while
+    // the editor is open must not strand the refcount.
+    static inline bool textInputHeld = false;
+
+public:
+    // Whether the player is currently typing into the note editor.
+    //
+    // InputHandler reads this to skip its own hotkey: that key is an ordinary
+    // letter, so acting on it while a field is focused would type the
+    // character AND close the menu in one keystroke.
+    [[nodiscard]] static bool IsTextInputActive() { return textInputHeld; }
+
+    // Undoes global menu-control state an earlier build could leave disabled.
+    // Called on load; see the definition.
+    static void RepairMenuControls();
+
+private:
+
     // The month currently displayed. Held here rather than in the movie so a
     // reopen starts on today again.
     GameDate::Date view{};
+
+    // Set by a note callback, acted on in AdvanceMovie.
+    //
+    // A month re-push rebuilds the entire grid in the movie, so it must not
+    // run while ActionScript is still on the stack -- doing so tore down the
+    // popup and cells underneath the very function that asked for it.
+    bool refreshPending = false;
 };

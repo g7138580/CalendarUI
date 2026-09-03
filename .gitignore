@@ -19,3 +19,7 @@ flash/decompiled/
 .vs/
 .vscode/
 *.user
+
+# Packaged release. Built by hand from dist/ plus the compiled .dll; belongs on
+# Nexus or a GitHub Release, not in source control.
+dist/CalendarUI/CalendarUI.zip
