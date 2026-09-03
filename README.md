@@ -1,11 +1,17 @@
 # CalendarUI
 
 A Tamriel calendar as a real Skyrim menu, opened with **L** or from the Tween
-Menu wheel. It shows the month grid, marks holidays, and opens a panel with a
-day's events.
+Menu wheel. It shows the month as a grid of day squares, marks holidays and
+moon phases, and opens a panel with a day's events -- where the player can also
+write notes of their own.
 
 The movie is produced without a Flash IDE by injecting our class into a copy of
 the game's own `messagebox.swf` -- see *How the .swf is built* below.
+
+**Requires** SKSE and [Address Library for SKSE
+Plugins](https://www.nexusmods.com/skyrimspecialedition/mods/32444). The plugin
+is version-independent and one binary covers **1.6 and 1.7**; Address Library
+is the mechanism that makes that work, so without it nothing loads.
 
 ## Why a Scaleform menu
 
@@ -87,13 +93,31 @@ origin is already screen centre.
 
 | Action | Keyboard | Gamepad |
 | --- | --- | --- |
-| Previous month | `Q`, PgUp | `LB` |
-| Next month | `E`, PgDn | `RB` |
-| Back to today | `R`, Tab | `Y` |
+| Previous month | `Q` | `LB` |
+| Next month | `R` | `RB` |
+| Back to today | `T` | `Y` |
 | Move selection | arrows | d-pad |
 | Select | click | `A` |
 | Open a day | `Enter`, click | `A` |
 | Close | `Esc` | `B` |
+
+Not `E`. The game claims it in menu contexts, so the keypress never reaches
+this menu -- it looks like the feature is broken rather than unbound. See
+`Settings::prevMonthKey` for the rest of that reasoning.
+
+Inside the note editor:
+
+| Action | Key |
+| --- | --- |
+| Add or edit a note | `N` |
+| Switch field | `Tab` |
+| Save | `Enter` |
+| Cancel | `Esc` |
+| Delete the note | `F4` |
+
+Every one of these is a prompt on screen as well as a key: icon plus caption,
+clickable, drawn from the live binding so a rebind moves the key and its
+picture together.
 
 ### The day popup
 
@@ -161,6 +185,86 @@ cells are resized with `setSize()` -- not `_width`/`_height`, which
 `gfx.core.UIComponent` caches in `__width`/`__height` and writes back over on
 the next redraw.
 
+## Notes
+
+The player writes their own entries on any day: a name and a description,
+opened with `N` from the day panel.
+
+Notes live in the **SKSE co-save**, not in a JSON file. They belong to one
+playthrough, so a note written on one character never appears on another, and
+they travel with the save rather than with the mod. `Notes::Register` installs
+the save, load and revert callbacks at plugin load rather than at
+`kDataLoaded` -- SKSE dispatches the load callback for a save that was already
+loading when the game started, and a handler registered later misses it.
+
+Revert matters as much as load. The store is global, so without a revert
+callback notes from the previous character would survive into the next one
+loaded in the same session.
+
+At the movie boundary a note is merged into the same per-day `events` array the
+JSON events use, carrying `isNote: true`. The .swf draws both the same way and
+knows nothing about the distinction; only the editor cares, and it keys off
+that flag rather than the kind string -- authored JSON may legitimately use
+`"note"` too.
+
+Note text is stored verbatim and deliberately **not** run through
+`Localization::Resolve`. A player who types a `$` means the character, not a
+translation key.
+
+Deleting is either the `F4` prompt, which asks first, or clearing both fields
+-- an entirely blank note removes itself rather than occupying a day as an
+invisible entry.
+
+### Text entry
+
+Getting a Scaleform text field to work in Skyrim is the fiddly part, and the
+working reference is SkyUI's own search box
+(`skyui.components.SearchWidget`). What it does, and what this follows:
+
+* **`skse.AllowTextInput` is called from the movie**, and owned there. SKSE
+  injects it into every Scaleform movie. It is a refcount: calling it from the
+  plugin *as well* raises the count twice per edit while lowering it once, and
+  the game then stays in text mode after the menu closes with the player unable
+  to move. One owner. The plugin touches it only in the menu's destructor, to
+  release a hold the movie can no longer release itself.
+* **`handleInput` returns the delegate's answer**, not `true`. Typed characters
+  never travel through `handleInput` -- Scaleform routes them straight to
+  whatever `Selection.setFocus` points at, but only if the menu does not claim
+  the event. Returning `true` to "block" keys is exactly what stops the field
+  ever receiving a character.
+* **`FocusHandler.instance.setFocus` is not called** for a bare `TextField`.
+  It writes `currentFocusLookup`, which `getPathToFocus` walks, and pointing
+  that at something with no `handleInput` breaks dispatch to the menu.
+* **Real keys come from `skse.GetLastKeycode`.** `details.code` is the
+  player's *binding* rather than the key, and inside a focused field it cannot
+  tell one letter from another.
+
+The plugin's only other job is staying out of the way: `InputHandler` skips its
+own hotkey while a field is live, or typing the hotkey's letter would both type
+the character and close the menu.
+
+## Moon phases
+
+Each day's cell shows the moon, and the day panel names the phase.
+
+Vanilla Skyrim does not simulate its moons. They are flat billboards with eight
+pre-rendered textures, and the phase is a modulo on the day counter: 24 days,
+eight phases, three days each. Both moons share one phase, which is why Masser
+and Secunda always match in the sky.
+
+Because it is a pure function of that counter, the phase is deterministic in
+**both directions** -- any past or future date can be computed without the game
+having been there. That is what makes it usable across a calendar grid rather
+than only as a "tonight's moon" readout.
+
+The phase is drawn in ActionScript rather than shipped as art: a lit disc with
+the terminator placed for the crescent and gibbous phases. The dark side is
+drawn too, not left empty -- a new moon with nothing drawn is indistinguishable
+from a day with no phase marked.
+
+Phase names go through the translation table (`CalendarUI_MoonFull` and
+friends), so a localized game names them in its own language.
+
 ## Holidays
 
 Events are data, not code: every `*.json` under
@@ -222,6 +326,9 @@ games use the 31st, which is the right call for a Skyrim-era mod.
 | `Controls` | `PrevMonthKey` | `0x10` (Q) | also picks the ButtonArt icon |
 | | `NextMonthKey` | `0x13` (R) | |
 | | `TodayKey` | `0x14` (T) | |
+| | `NoteKey` | `0x31` (N) | opens the note editor |
+| | `NoteDeleteKey` | `0x3E` (F4) | deletes the note being edited |
+| | `NoteDeleteNeedsCtrl` | `0` | set to `1` if you rebind delete to a letter |
 | `Moons` | `ShowMoonPhases` | `1` | the disc in a day's top-right corner |
 | | `CycleDays` | `24` | vanilla's lunar cycle |
 | | `DaysPerPhase` | `3` | 8 phases x 3 days = the 24-day cycle |
@@ -236,6 +343,18 @@ event file, an unparsable translation line -- still reports itself. It is read
 before the logger is created, so nothing is written at a level the player asked
 not to see. A typo falls back to `info` rather than silence: somebody editing
 this key is usually trying to turn logging **up**.
+
+**`NoteDeleteKey`** defaults to `F4` because a function key is never text: it
+cannot be confused with typing into the note fields, so it needs no modifier.
+Rebind it to a plain letter and set `NoteDeleteNeedsCtrl=1`, where the modifier
+becomes the only thing separating the command from the character.
+
+`NoteSaveKey`, `NoteCancelKey` and `NoteSwitchKey` also appear in the INI but
+feed the **on-screen hint only**. The editor matches those three through
+Scaleform's own navigation events rather than a scan code, which is what makes
+them work on a gamepad as well as a keyboard, so the real keys are always
+Enter, Escape and Tab. Changing the values would make the hint disagree with
+reality.
 
 **`[Moons]`** draws a small moon in the top-right corner of a day.
 
@@ -369,18 +488,43 @@ own holidays can be translated without that being forced on anyone.
 
 ## Building
 
+CommonLibSSE-NG is a **submodule**, so clone with it:
+
 ```powershell
-cd "e:\Skyrim Modlists\Skyrim Mod\CalendarUI"
+git clone --recursive https://github.com/g7138580/CalendarUI.git
+```
+
+If you already cloned without `--recursive`:
+
+```powershell
+git submodule update --init --recursive
+```
+
+It is the [alandtse fork](https://github.com/alandtse/CommonLibSSE-NG), built
+from source and pinned to an exact commit rather than pulled from vcpkg. That
+fork is what lets one binary serve **1.6 and 1.7** -- stock CommonLibSSE-NG
+misreads the 1.7 minor-version bump as SE. Building it is most of the build
+time; the plugin itself takes seconds.
+
+Then:
+
+```powershell
 .\build.ps1
 ```
 
-Builds and deploys the DLL, the INI and the event data. It does **not** build
-the `.swf` -- that is a separate step, because it needs FFDec rather than the
-C++ toolchain:
+Builds and deploys the DLL, the INI and the event data. Set
+`SKYRIM_MODS_FOLDER` to your MO2 `mods` directory first, and
+`CALENDARUI_MOD_FOLDER` if the mod is installed under a name other than
+`CalendarUI`. A Wabbajack list may use something like `[NoDelete] CalendarUI`,
+and deploying to a guessed name silently creates a folder MO2 has never heard
+of while the game goes on loading the old DLL.
+
+It does **not** build the `.swf` -- that is a separate step, because it needs
+FFDec rather than the C++ toolchain:
 
 ```powershell
 cd flash
-.uild-swf.ps1 -Deploy
+.\build-swf.ps1 -Deploy
 ```
 
 Run it after any change to `flash/src/CalendarMenu.as`. `-Deploy` copies the
