@@ -1,8 +1,8 @@
 # CalendarUI
 
 A Tamriel calendar as a real Skyrim menu, opened with **L** or from the tween
-wheel (Tween Menu Overhaul or Extended Tween Menu, both supported without a
-patch). It shows the month as a grid of day squares, marks holidays and
+wheel (Tween Menu Overhaul or Extended Tween Menu, both supported out of the
+box). It shows the month as a grid of day squares, marks holidays and
 moon phases, and opens a panel with a day's events -- where the player can also
 write notes of their own.
 
@@ -537,14 +537,13 @@ result into `dist/CalendarUI/Interface/`; without it the build stops at
 The menu is registered as **`CalendarUI`** -- the same string as the movie, so
 there is only one name to know. That is what anything else uses to open it.
 
-Both [Tween Menu
-Overhaul](https://www.nexusmods.com/skyrimspecialedition/mods/64409) and
-[Extended Tween
-Menu](https://www.nexusmods.com/skyrimspecialedition/mods/96028) are supported
-out of the box, and neither needs a patch: they read the same
-`Interface/tweenoptions/` folder and take the same option format, so the one
-file works for either. `Interface/tweenoptions/calendarui.json` ships with the
-mod:
+Two tween wheels are supported out of the box, and each gets **its own file**
+-- they read different folders and take different formats, so one config cannot
+serve both. Both ship with the mod; the wheel you do not use simply ignores its
+file.
+
+[Tween Menu Overhaul](https://www.nexusmods.com/skyrimspecialedition/mods/64409)
+reads `Interface/tweenoptions/calendarui.json`:
 
 ```json
 {
@@ -555,6 +554,26 @@ mod:
 	"category": "bottom"
 }
 ```
+
+[Extended Tween
+Menu](https://www.nexusmods.com/skyrimspecialedition/mods/184488) reads
+`Interface/ExtendedTweenMenu/CalendarUI.json`, which is a different shape
+entirely:
+
+```json
+{
+    "menuName": "CalendarUI",
+    "label": "Calendar",
+    "icon": "note"
+}
+```
+
+Note that `menuName` means different things in the two. For Extended Tween Menu
+it is the **registered menu name** -- the string Tween Menu Overhaul calls
+`skseName` -- while Tween Menu Overhaul's own `menuName` is the *caption on the
+wheel*, which Extended Tween Menu calls `label`. The same word, swapped roles;
+copying a value across from one file to the other produces an entry that does
+nothing.
 
 `skseName` must be the **registered menu name**, not the `.swf` -- that is the
 one thing to get right here, and a mismatch fails silently: the entry appears on
